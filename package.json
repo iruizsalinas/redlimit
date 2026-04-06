@@ -35,16 +35,20 @@
     "redis": ">=5.0.0"
   },
   "peerDependenciesMeta": {
-    "ioredis": { "optional": true },
-    "redis": { "optional": true }
+    "ioredis": {
+      "optional": true
+    },
+    "redis": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@types/node": "25.5.0",
-    "ioredis": "^5.10.1",
-    "redis": "5.1.1",
-    "tsup": "8.5.0",
-    "typescript": "5.7.3",
-    "vitest": "3.2.4"
+    "@types/node": "25.5.2",
+    "ioredis": "5.10.1",
+    "redis": "5.11.0",
+    "tsup": "8.5.1",
+    "typescript": "6.0.2",
+    "vitest": "4.1.2"
   },
   "repository": {
     "type": "git",
@@ -52,6 +56,6 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }
