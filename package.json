@@ -54,6 +54,7 @@
     "type": "git",
     "url": "https://github.com/iruizsalinas/redlimit.git"
   },
+  "keywords": ["redis", "ratelimit"],
   "license": "MIT",
   "engines": {
     "node": ">=20"
