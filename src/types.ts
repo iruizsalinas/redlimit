@@ -23,10 +23,15 @@ export interface WindowConfig extends BaseConfig {
   window: Duration
 }
 
+export interface RefillConfig {
+  amount: number
+  interval: Duration
+}
+
 export interface TokenBucketConfig extends BaseConfig {
   algorithm: 'token-bucket'
   limit: number
-  refillRate: number
+  refill: RefillConfig
 }
 
 export type LimiterConfig = WindowConfig | TokenBucketConfig

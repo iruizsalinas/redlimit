@@ -25,7 +25,7 @@ describe('concurrency', { timeout: 120_000 }, () => {
     it.each([
       ['fixed-window', { algorithm: 'fixed-window' as const, limit: 100, window: '30s' as const }],
       ['sliding-window', { algorithm: 'sliding-window' as const, limit: 100, window: '30s' as const }],
-      ['token-bucket', { algorithm: 'token-bucket' as const, limit: 100, refillRate: 0.001 }],
+      ['token-bucket', { algorithm: 'token-bucket' as const, limit: 100, refill: { amount: 1, interval: '1000s' } }],
     ])('%s: 10,000 concurrent requests — exactly 100 allowed', async (name, config) => {
       const rl = new Limiter({ redis, ...config, prefix: PREFIX })
 
@@ -59,7 +59,7 @@ describe('concurrency', { timeout: 120_000 }, () => {
         redis,
         algorithm: 'token-bucket',
         limit: 5,
-        refillRate: 0.001,
+        refill: { amount: 1, interval: '1000s' },
         prefix: PREFIX,
       })
 
@@ -238,7 +238,7 @@ describe('concurrency', { timeout: 120_000 }, () => {
       const configs = [
         { algorithm: 'fixed-window' as const, limit: 50, window: '30s' as const },
         { algorithm: 'sliding-window' as const, limit: 50, window: '30s' as const },
-        { algorithm: 'token-bucket' as const, limit: 50, refillRate: 0.001 },
+        { algorithm: 'token-bucket' as const, limit: 50, refill: { amount: 1, interval: '1000s' } },
       ]
 
       for (const config of configs) {
@@ -258,7 +258,7 @@ describe('concurrency', { timeout: 120_000 }, () => {
     it('three algorithms under simultaneous load — all hold', async () => {
       const fw = new Limiter({ redis, algorithm: 'fixed-window', limit: 200, window: '30s', prefix: `${PREFIX}-fw` })
       const sw = new Limiter({ redis, algorithm: 'sliding-window', limit: 200, window: '30s', prefix: `${PREFIX}-sw` })
-      const tb = new Limiter({ redis, algorithm: 'token-bucket', limit: 200, refillRate: 0.001, prefix: `${PREFIX}-tb` })
+      const tb = new Limiter({ redis, algorithm: 'token-bucket', limit: 200, refill: { amount: 1, interval: '1000s' }, prefix: `${PREFIX}-tb` })
 
       const [fwR, swR, tbR] = await Promise.all([
         Promise.all(Array.from({ length: 20_000 }, () => fw.limit('simul'))),
@@ -306,7 +306,7 @@ describe('concurrency', { timeout: 120_000 }, () => {
         redis,
         algorithm: 'token-bucket',
         limit: 100,
-        refillRate: 50,
+        refill: { amount: 50, interval: '1s' },
         prefix: PREFIX,
       })
 
@@ -327,7 +327,7 @@ describe('concurrency', { timeout: 120_000 }, () => {
         redis,
         algorithm: 'token-bucket',
         limit: 10,
-        refillRate: 1000,
+        refill: { amount: 1000, interval: '1s' },
         prefix: PREFIX,
       })
 

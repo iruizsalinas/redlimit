@@ -5,6 +5,7 @@ export type {
   LimiterHeaders,
   LimitOptions,
   BanConfig,
+  RefillConfig,
   Duration,
   Algorithm,
 } from './types.js'

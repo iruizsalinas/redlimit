@@ -83,7 +83,7 @@ describe('Limiter', () => {
         redis,
         algorithm: 'token-bucket',
         limit: 100,
-        refillRate: 1.67,
+        refill: { amount: 10, interval: '6s' },
       })
       expect(rl).toBeInstanceOf(Limiter)
     })
@@ -107,11 +107,28 @@ describe('Limiter', () => {
         .toThrow('limit must be a positive integer')
     })
 
-    it('throws on refillRate <= 0', () => {
-      expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refillRate: 0 }))
-        .toThrow('refillRate must be a positive number')
-      expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refillRate: -1 }))
-        .toThrow('refillRate must be a positive number')
+    it('throws when refill is missing', () => {
+      expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10 } as any))
+        .toThrow('refill is required')
+    })
+
+    it('throws on refill.amount <= 0', () => {
+      expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: 0, interval: '1s' } }))
+        .toThrow('refill.amount must be a positive integer')
+      expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: -1, interval: '1s' } }))
+        .toThrow('refill.amount must be a positive integer')
+    })
+
+    it('throws on fractional refill.amount', () => {
+      expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: 1.5, interval: '1s' } }))
+        .toThrow('refill.amount must be a positive integer')
+    })
+
+    it('throws on invalid refill.interval', () => {
+      expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: 1, interval: '0s' } } as any))
+        .toThrow('duration must be greater than 0')
+      expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: 1, interval: 'abc' } } as any))
+        .toThrow('Invalid duration')
     })
 
     it('throws on window "0s"', () => {
@@ -529,7 +546,7 @@ describe('Limiter', () => {
         redis,
         algorithm: 'token-bucket',
         limit: 100,
-        refillRate: 1.67,
+        refill: { amount: 10, interval: '6s' },
       })
       await rl.reset('user_123')
       expect(redis.del).toHaveBeenCalled()
@@ -540,7 +557,7 @@ describe('Limiter', () => {
         redis,
         algorithm: 'token-bucket',
         limit: 100,
-        refillRate: 1.67,
+        refill: { amount: 10, interval: '6s' },
         ban: {
           escalation: ['1m'],
           history: '1h',
@@ -614,7 +631,7 @@ describe('Limiter with ioredis', () => {
     const redis = mockIoRedis()
     expect(new Limiter({ redis, algorithm: 'fixed-window', limit: 10, window: '30s' })).toBeInstanceOf(Limiter)
     expect(new Limiter({ redis, algorithm: 'sliding-window', limit: 10, window: '1m' })).toBeInstanceOf(Limiter)
-    expect(new Limiter({ redis, algorithm: 'token-bucket', limit: 100, refillRate: 1.67 })).toBeInstanceOf(Limiter)
+    expect(new Limiter({ redis, algorithm: 'token-bucket', limit: 100, refill: { amount: 10, interval: '6s' } })).toBeInstanceOf(Limiter)
   })
 
   it('limit returns result', async () => {
@@ -648,7 +665,7 @@ describe('Limiter with ioredis', () => {
 
   it('reset deletes keys with variadic args for token bucket', async () => {
     const redis = mockIoRedis()
-    const rl = new Limiter({ redis, algorithm: 'token-bucket', limit: 100, refillRate: 1.67 })
+    const rl = new Limiter({ redis, algorithm: 'token-bucket', limit: 100, refill: { amount: 10, interval: '6s' } })
     await rl.reset('user_123')
 
     expect(redis.del).toHaveBeenCalledWith(

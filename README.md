@@ -58,7 +58,7 @@ All algorithms run as atomic Lua scripts inside Redis.
 { algorithm: 'sliding-window', limit: 100, window: '1m' }
 
 // Token bucket - allows bursts, then enforces a steady rate
-{ algorithm: 'token-bucket', limit: 100, refillRate: 1.67 }
+{ algorithm: 'token-bucket', limit: 100, refill: { amount: 10, interval: '6s' } }
 ```
 
 ## Config
@@ -69,7 +69,7 @@ All algorithms run as atomic Lua scripts inside Redis.
 | `algorithm` | `'fixed-window'` `'sliding-window'` `'token-bucket'` | | Algorithm to use |
 | `limit` | `number` | | Max requests per window, or bucket capacity |
 | `window` | `string` | | Time window: `'30s'`, `'5m'`, `'1h'`, `'1d'` |
-| `refillRate` | `number` | | Tokens per second (token bucket only) |
+| `refill` | `{ amount, interval }` | | Refill config: how many tokens to add and how often (token bucket only) |
 | `prefix` | `string` | `'rl'` | Redis key prefix |
 | `fail` | `'open'` or `'closed'` | `'closed'` | What happens when Redis is down |
 | `ban` | `object` | | Ban escalation (see below) |
@@ -158,7 +158,7 @@ const apiLimit = new Limiter({
   redis,
   algorithm: 'token-bucket',
   limit: 100,
-  refillRate: 1.67,
+  refill: { amount: 10, interval: '6s' },
   prefix: 'api',
 })
 

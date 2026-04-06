@@ -199,7 +199,7 @@ describe('ban escalation', () => {
     const configs = [
       { algorithm: 'fixed-window' as const, limit: 1, window: '10s' as const },
       { algorithm: 'sliding-window' as const, limit: 1, window: '10s' as const },
-      { algorithm: 'token-bucket' as const, limit: 1, refillRate: 0.001 },
+      { algorithm: 'token-bucket' as const, limit: 1, refill: { amount: 1, interval: '1000s' } },
     ]
 
     for (const config of configs) {
@@ -311,7 +311,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 2,
-      refillRate: 0.001,
+      refill: { amount: 1, interval: '1000s' },
       prefix: `${PREFIX}-api`,
       ban: {
         escalation: ['10s'],
@@ -324,7 +324,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 2,
-      refillRate: 0.001,
+      refill: { amount: 1, interval: '1000s' },
       prefix: `${PREFIX}-oauth`,
       ban: {
         escalation: ['10s'],

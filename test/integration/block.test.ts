@@ -62,7 +62,7 @@ describe('block and reset (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 100,
-      refillRate: 10,
+      refill: { amount: 10, interval: '1s' },
       prefix: PREFIX,
     })
 

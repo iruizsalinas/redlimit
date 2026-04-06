@@ -59,7 +59,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refillRate: 1,
+      refill: { amount: 1, interval: '1s' },
       prefix: PREFIX,
     })
 

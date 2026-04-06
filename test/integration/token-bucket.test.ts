@@ -26,7 +26,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refillRate: 1,
+      refill: { amount: 1, interval: '1s' },
       prefix: PREFIX,
     })
 
@@ -39,7 +39,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refillRate: 1,
+      refill: { amount: 1, interval: '1s' },
       prefix: PREFIX,
     })
 
@@ -57,7 +57,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 3,
-      refillRate: 0.5, // 0.5 tokens/sec — slow enough that network latency won't refill during drain
+      refill: { amount: 1, interval: '2s' }, // 0.5 tokens/sec — slow enough that network latency won't refill during drain
       prefix: PREFIX,
     })
 
@@ -81,7 +81,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 10,
-      refillRate: 1,
+      refill: { amount: 1, interval: '1s' },
       prefix: PREFIX,
     })
 
@@ -98,7 +98,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refillRate: 100, // very fast refill
+      refill: { amount: 100, interval: '1s' }, // very fast refill
       prefix: PREFIX,
     })
 
@@ -114,7 +114,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refillRate: 1,
+      refill: { amount: 1, interval: '1s' },
       prefix: PREFIX,
     })
 

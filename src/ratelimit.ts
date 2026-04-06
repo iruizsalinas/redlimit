@@ -97,10 +97,14 @@ export class Limiter {
     this.limitValue = config.limit
 
     if (config.algorithm === 'token-bucket') {
-      if (config.refillRate <= 0 || !Number.isFinite(config.refillRate)) {
-        throw new Error(`refillRate must be a positive number. Got: ${config.refillRate}`)
+      if (!config.refill || typeof config.refill !== 'object') {
+        throw new Error('refill is required when algorithm is "token-bucket".')
       }
-      this.refillRate = config.refillRate
+      if (!Number.isInteger(config.refill.amount) || config.refill.amount <= 0) {
+        throw new Error(`refill.amount must be a positive integer. Got: ${config.refill.amount}`)
+      }
+      const intervalMs = parseDuration(config.refill.interval)
+      this.refillRate = config.refill.amount / intervalMs * 1000
       this.windowMs = 0
       this.algorithm = tokenBucket
     } else {
