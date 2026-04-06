@@ -181,5 +181,5 @@ const { success, remaining } = await quota.limit(apiKey)
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 20+
 - Redis 5.0+
