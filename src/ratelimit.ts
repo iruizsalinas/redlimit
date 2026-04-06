@@ -47,6 +47,7 @@ export class Limiter {
   private adapter: RedisAdapter
   private algorithm: AlgorithmHandler
   private limitValue: number
+  private limitValueStr: string
   private windowMs: number
   private refillRate: number
   private prefix: string
@@ -95,6 +96,7 @@ export class Limiter {
     this.prefix = prefix
     this.fail = config.fail ?? 'closed'
     this.limitValue = config.limit
+    this.limitValueStr = String(config.limit)
 
     if (config.algorithm === 'token-bucket') {
       if (!config.refill || typeof config.refill !== 'object') {
@@ -223,7 +225,7 @@ export class Limiter {
       reset: resetAppTime,
       limit: this.limitValue,
       headers: {
-        'RateLimit-Limit': String(this.limitValue),
+        'RateLimit-Limit': this.limitValueStr,
         'RateLimit-Remaining': String(safeRemaining),
         'RateLimit-Reset': String(resetSec),
         ...(!success && { 'Retry-After': String(resetSec) }),

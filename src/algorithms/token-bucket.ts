@@ -58,7 +58,7 @@ if tokens < cost then
   local waitMs   = math.ceil(deficit / refillRate * 1000)
   local resetMs  = now + waitMs
 
-  redis.call('HMSET', key, 'tokens', tostring(tokens), 'ts', tostring(ts))
+  redis.call('HSET', key, 'tokens', tostring(tokens), 'ts', tostring(ts))
   redis.call('PEXPIRE', key, ttlMs)
 
   return {0, math.floor(tokens), resetMs, now}
@@ -66,7 +66,7 @@ end
 
 tokens = tokens - cost
 
-redis.call('HMSET', key, 'tokens', tostring(tokens), 'ts', tostring(ts))
+redis.call('HSET', key, 'tokens', tostring(tokens), 'ts', tostring(ts))
 redis.call('PEXPIRE', key, ttlMs)
 
 local deficit = maxTokens - tokens
