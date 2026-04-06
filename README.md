@@ -179,6 +179,10 @@ const quota = new Limiter({
 const { success, remaining } = await quota.limit(apiKey)
 ```
 
+## Examples
+
+See the [examples](https://github.com/iruizsalinas/redlimit/tree/main/examples) folder for usage with Express, Next.js, Fastify, and Hono.
+
 ## Requirements
 
 - Node.js 20+
