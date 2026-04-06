@@ -55,12 +55,6 @@ function createIoRedisAdapter(c: any): RedisAdapter {
     async set(key, value, px) {
       await c.set(key, value, 'PX', px)
     },
-    async get(key) {
-      return c.get(key)
-    },
-    async pttl(key) {
-      return c.pttl(key)
-    },
   }
 }
 
@@ -82,12 +76,6 @@ function createNodeRedisAdapter(c: any): RedisAdapter {
     },
     async set(key, value, px) {
       await c.set(key, value, { PX: px })
-    },
-    async get(key) {
-      return c.get(key)
-    },
-    async pttl(key) {
-      return (c.pTTL ?? c.pttl).call(c, key)
     },
   }
 }

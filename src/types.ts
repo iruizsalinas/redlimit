@@ -2,8 +2,6 @@ export interface RedisAdapter {
   eval(script: string, keys: string[], args: string[]): Promise<unknown>
   del(...keys: string[]): Promise<number>
   set(key: string, value: string, px: number): Promise<void>
-  get(key: string): Promise<string | null>
-  pttl(key: string): Promise<number>
 }
 
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd' | 'w'}`

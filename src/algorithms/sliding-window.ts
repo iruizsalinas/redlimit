@@ -1,4 +1,5 @@
 import type { AlgorithmHandler, LuaResult } from '../types.js'
+import { getKeys, toLuaResult } from './shared.js'
 
 const LIMIT_SCRIPT = `
 
@@ -172,19 +173,6 @@ return redis.call(
 )
 `
 
-function getKeys(
-  prefix: string,
-  banPrefix: string,
-  identifier: string,
-  includeBanHistory: boolean,
-) {
-  return [
-    `${prefix}:{${identifier}}`,
-    `${banPrefix}:{${identifier}}:blocked`,
-    ...(includeBanHistory ? [`${banPrefix}:{${identifier}}:banhist`] : []),
-  ]
-}
-
 export const slidingWindow: AlgorithmHandler = {
   async limit(adapter, prefix, banPrefix, identifier, maxLimit, windowMs, _refillRate, cost, banArgs) {
     const keys = getKeys(prefix, banPrefix, identifier, banArgs !== null)
@@ -194,15 +182,13 @@ export const slidingWindow: AlgorithmHandler = {
       String(windowMs),
       ...(banArgs ?? ['0', '0']),
     ]
-    const result = await adapter.eval(LIMIT_SCRIPT, keys, args) as LuaResult
-    return [Number(result[0]), Number(result[1]), Number(result[2]), Number(result[3])]
+    return toLuaResult(await adapter.eval(LIMIT_SCRIPT, keys, args) as LuaResult)
   },
 
   async peek(adapter, prefix, banPrefix, identifier, maxLimit, windowMs, _refillRate) {
     const keys = getKeys(prefix, banPrefix, identifier, false)
     const args = [String(maxLimit), String(windowMs)]
-    const result = await adapter.eval(PEEK_SCRIPT, keys, args) as LuaResult
-    return [Number(result[0]), Number(result[1]), Number(result[2]), Number(result[3])]
+    return toLuaResult(await adapter.eval(PEEK_SCRIPT, keys, args) as LuaResult)
   },
 
   async reset(adapter, prefix, banPrefix, identifier, windowMs, clearBanHistory) {

@@ -7,6 +7,8 @@ const UNITS: Record<string, number> = {
   w: 604_800_000,
 }
 
+const DURATION_RE = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)$/
+
 export function parseDuration(input: string): number {
   if (typeof input !== 'string') {
     throw new Error(
@@ -14,7 +16,7 @@ export function parseDuration(input: string): number {
     )
   }
 
-  const match = input.match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)$/)
+  const match = input.match(DURATION_RE)
   if (!match) {
     throw new Error(
       `Invalid duration: "${input}". Expected format: "30s", "5m", "1h", etc.`
