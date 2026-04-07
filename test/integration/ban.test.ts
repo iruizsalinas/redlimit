@@ -199,7 +199,7 @@ describe('ban escalation', () => {
     const configs = [
       { algorithm: 'fixed-window' as const, limit: 1, window: '10s' as const },
       { algorithm: 'sliding-window' as const, limit: 1, window: '10s' as const },
-      { algorithm: 'token-bucket' as const, limit: 1, refill: { amount: 1, interval: '1000s' } },
+      { algorithm: 'token-bucket' as const, limit: 1, refill: { amount: 1, interval: '1000s' as const } },
     ]
 
     for (const config of configs) {
