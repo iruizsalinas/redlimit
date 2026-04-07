@@ -137,7 +137,7 @@ ban: {
 ```ts
 const loginLimit = new Limiter({
   redis,
-  algorithm: 'fixed-window',
+  algorithm: 'sliding-window',
   limit: 5,
   window: '15m',
   prefix: 'login',
@@ -164,22 +164,6 @@ const apiLimit = new Limiter({
 
 const { success, headers } = await apiLimit.limit(apiKey)
 ```
-
-### Daily Quota
-
-```ts
-const quota = new Limiter({
-  redis,
-  algorithm: 'sliding-window',
-  limit: 1000,
-  window: '1d',
-  prefix: 'quota',
-})
-
-const { success, remaining } = await quota.limit(apiKey)
-```
-
-## Examples
 
 See the [examples](https://github.com/iruizsalinas/redlimit/tree/main/examples) folder for usage with Express, Next.js, Fastify, and Hono.
 
