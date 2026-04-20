@@ -43,18 +43,18 @@
     }
   },
   "devDependencies": {
-    "@types/node": "25.5.2",
+    "@types/node": "25.6.0",
     "ioredis": "5.10.1",
-    "redis": "5.11.0",
+    "redis": "5.12.1",
     "tsup": "8.5.1",
-    "typescript": "6.0.2",
-    "vitest": "4.1.2"
+    "typescript": "6.0.3",
+    "vitest": "4.1.4"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/iruizsalinas/redlimit.git"
   },
-  "keywords": ["redis", "ratelimit"],
+  "keywords": ["redis", "ratelimit", "backend"],
   "license": "MIT",
   "engines": {
     "node": ">=20"

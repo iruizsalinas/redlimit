@@ -10,7 +10,7 @@ cd redlimit
 npm install
 ```
 
-You'll need a local Redis instance running for integration tests. Default is `redis://localhost:6380` (set `REDIS_URL` in `.env` to change it).
+You'll need a local Redis instance running for integration tests. Default is `redis://localhost:6379` (set `REDIS_URL` in `.env` to change it).
 
 ## Development
 
