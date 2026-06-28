@@ -22,7 +22,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsdown",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
@@ -43,12 +43,12 @@
     }
   },
   "devDependencies": {
-    "@types/node": "25.6.0",
-    "ioredis": "5.10.1",
+    "@types/node": "25.9.4",
+    "ioredis": "5.11.1",
     "redis": "5.12.1",
-    "tsup": "8.5.1",
+    "tsdown": "0.22.3",
     "typescript": "6.0.3",
-    "vitest": "4.1.4"
+    "vitest": "4.1.9"
   },
   "repository": {
     "type": "git",
