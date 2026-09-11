@@ -43,12 +43,12 @@
     }
   },
   "devDependencies": {
-    "@types/node": "25.9.4",
+    "@types/node": "25.9.6",
     "ioredis": "5.11.1",
     "redis": "5.12.1",
-    "tsdown": "0.22.3",
+    "tsdown": "0.23.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.9"
+    "vitest": "4.1.11"
   },
   "repository": {
     "type": "git",
