@@ -30,5 +30,10 @@ export function parseDuration(input: string): number {
       `duration must be greater than 0. Got: "${input}"`
     )
   }
+  if (!Number.isSafeInteger(ms)) {
+    throw new Error(
+      `duration is too large to represent safely in milliseconds. Got: "${input}"`
+    )
+  }
   return ms
 }

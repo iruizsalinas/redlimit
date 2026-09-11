@@ -107,6 +107,11 @@ describe('Limiter', () => {
         .toThrow('limit must be a positive integer')
     })
 
+    it('throws on an unsafe integer limit', () => {
+      expect(() => new Limiter({ redis, algorithm: 'fixed-window', limit: Number.MAX_SAFE_INTEGER + 1, window: '30s' }))
+        .toThrow("limit must be a positive integer within JavaScript's safe range")
+    })
+
     it('throws when refill is missing', () => {
       expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10 } as any))
         .toThrow('refill is required')
@@ -122,6 +127,24 @@ describe('Limiter', () => {
     it('throws on fractional refill.amount', () => {
       expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: 1.5, interval: '1s' } }))
         .toThrow('refill.amount must be a positive integer')
+    })
+
+    it('throws on an unsafe integer refill.amount', () => {
+      expect(() => new Limiter({
+        redis,
+        algorithm: 'token-bucket',
+        limit: 10,
+        refill: { amount: Number.MAX_SAFE_INTEGER + 1, interval: '1s' },
+      })).toThrow("refill.amount must be a positive integer within JavaScript's safe range")
+    })
+
+    it('throws when token-bucket time-to-live would be unsafe', () => {
+      expect(() => new Limiter({
+        redis,
+        algorithm: 'token-bucket',
+        limit: Number.MAX_SAFE_INTEGER,
+        refill: { amount: 1, interval: '1s' },
+      })).toThrow('refill duration that is too large to represent safely')
     })
 
     it('throws on invalid refill.interval', () => {
@@ -361,6 +384,18 @@ describe('Limiter', () => {
       })
       await expect(rl.limit('user_123', { cost: Infinity })).rejects.toThrow(
         'cost must be a positive integer'
+      )
+    })
+
+    it('throws when cost is an unsafe integer', async () => {
+      const rl = new Limiter({
+        redis,
+        algorithm: 'fixed-window',
+        limit: 10,
+        window: '30s',
+      })
+      await expect(rl.limit('user_123', { cost: Number.MAX_SAFE_INTEGER + 1 })).rejects.toThrow(
+        "cost must be a positive integer within JavaScript's safe range"
       )
     })
 

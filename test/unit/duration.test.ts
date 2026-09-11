@@ -45,4 +45,9 @@ describe('parseDuration', () => {
     expect(() => parseDuration('0m')).toThrow('duration must be greater than 0')
     expect(() => parseDuration('0ms')).toThrow('duration must be greater than 0')
   })
+
+  it('throws when milliseconds cannot be represented safely', () => {
+    expect(() => parseDuration('9007199254740992ms')).toThrow('too large to represent safely')
+    expect(() => parseDuration(`${'9'.repeat(400)}s`)).toThrow('too large to represent safely')
+  })
 })

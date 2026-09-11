@@ -19,6 +19,14 @@ const SUPPORTED_ALGORITHMS = new Set<Algorithm>([
   'token-bucket',
 ])
 
+function validatePositiveSafeInteger(name: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(
+      `${name} must be a positive integer within JavaScript's safe range. Got: ${value}`
+    )
+  }
+}
+
 function validateKeyPrefix(name: string, value: unknown): string | undefined {
   if (value === undefined) return undefined
 
@@ -56,9 +64,7 @@ export class Limiter {
   private banPrefix: string
 
   constructor(config: LimiterConfig) {
-    if (!Number.isInteger(config.limit) || config.limit <= 0) {
-      throw new Error(`limit must be a positive integer. Got: ${config.limit}`)
-    }
+    validatePositiveSafeInteger('limit', config.limit)
 
     const algorithm = config.algorithm as string
     if (!SUPPORTED_ALGORITHMS.has(algorithm as Algorithm)) {
@@ -102,11 +108,15 @@ export class Limiter {
       if (!config.refill || typeof config.refill !== 'object') {
         throw new Error('refill is required when algorithm is "token-bucket".')
       }
-      if (!Number.isInteger(config.refill.amount) || config.refill.amount <= 0) {
-        throw new Error(`refill.amount must be a positive integer. Got: ${config.refill.amount}`)
-      }
+      validatePositiveSafeInteger('refill.amount', config.refill.amount)
       const intervalMs = parseDuration(config.refill.interval)
       this.refillRate = config.refill.amount / intervalMs * 1000
+      const bucketTtlMs = Math.ceil(this.limitValue / this.refillRate * 1000) + 1000
+      if (!Number.isFinite(this.refillRate) || this.refillRate <= 0 || !Number.isSafeInteger(bucketTtlMs)) {
+        throw new Error(
+          'token-bucket configuration produces a refill duration that is too large to represent safely.'
+        )
+      }
       this.windowMs = 0
       this.algorithm = tokenBucket
     } else {
@@ -133,9 +143,7 @@ export class Limiter {
     this.validateIdentifier(identifier)
     const cost = options?.cost ?? 1
 
-    if (!Number.isInteger(cost) || cost < 1) {
-      throw new Error(`cost must be a positive integer. Got: ${cost}`)
-    }
+    validatePositiveSafeInteger('cost', cost)
 
     if (cost > this.limitValue) {
       throw new Error(
