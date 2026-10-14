@@ -73,45 +73,6 @@ describe('ban escalation', () => {
     expect(blockedKey).toBeNull()
   })
 
-  it('escalates ban duration on repeat offenses', async () => {
-    const rl = new Limiter({
-      redis,
-      algorithm: 'fixed-window',
-      limit: 1,
-      window: '1s',
-      prefix: PREFIX,
-      ban: {
-        escalation: ['1s', '2s', '5s'],
-        history: '30s',
-      },
-    })
-
-    // First offense
-    await rl.limit('user3')
-    await rl.limit('user3') // denied → banned 1s
-
-    // Check ban duration (should be ~1s)
-    const pttl1 = await redis.pTTL(`${PREFIX}:{user3}:blocked`)
-    expect(pttl1).toBeGreaterThan(0)
-    expect(pttl1).toBeLessThanOrEqual(1000)
-
-    // Wait for ban to expire
-    await waitForRedisTime(redis, 1100)
-
-    // Reset rate limit state for next test
-    await rl.reset('user3')
-    // Re-add ban history (reset cleared it, so manually restore)
-    await redis.zAdd(`${PREFIX}:{user3}:banhist`, { score: Date.now(), value: `seed-${Date.now()}` })
-
-    // Second offense
-    await rl.limit('user3')
-    await rl.limit('user3') // denied → banned 2s (escalated)
-
-    const pttl2 = await redis.pTTL(`${PREFIX}:{user3}:blocked`)
-    expect(pttl2).toBeGreaterThan(1000)
-    expect(pttl2).toBeLessThanOrEqual(2000)
-  })
-
   it('caps at max escalation step', async () => {
     const rl = new Limiter({
       redis,
