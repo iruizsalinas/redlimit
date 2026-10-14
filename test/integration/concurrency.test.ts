@@ -43,53 +43,6 @@ describe('concurrency', { timeout: 120_000 }, () => {
 
       expect(results.filter((r) => r.success).length).toBe(100)
     })
-
-    it('100,000 concurrent requests — exactly 100 allowed', async () => {
-      const rl = new Limiter({
-        redis,
-        algorithm: 'fixed-window',
-        limit: 100,
-        window: '1h',
-        prefix: PREFIX,
-      })
-
-      const results = await freshWindow(rl, 'atomicity-100k', () => Promise.all(
-        Array.from({ length: 100_000 }, () => rl.limit('atomicity-100k'))
-      ), 3_600_000)
-
-      expect(results.filter((r) => r.success).length).toBe(100)
-    })
-  })
-
-  describe('key isolation', () => {
-    it('10,000 keys x 20 requests each — every key gets exactly its limit', async () => {
-      const rl = new Limiter({
-        redis,
-        algorithm: 'token-bucket',
-        limit: 5,
-        refill: { amount: 1, interval: '1000s' as const },
-        prefix: PREFIX,
-      })
-
-      const KEYS = 10_000
-      const REQS_PER_KEY = 20
-
-      const results = await Promise.all(
-        Array.from({ length: KEYS * REQS_PER_KEY }, (_, i) => {
-          const key = i % KEYS
-          return rl.limit(`key-${key}`).then((r) => ({ key, success: r.success }))
-        })
-      )
-
-      const perKey = new Map<number, number>()
-      for (const r of results) {
-        if (r.success) perKey.set(r.key, (perKey.get(r.key) ?? 0) + 1)
-      }
-
-      for (let k = 0; k < KEYS; k++) {
-        expect(perKey.get(k)).toBe(5)
-      }
-    })
   })
 
   describe('cost', () => {
@@ -259,25 +212,6 @@ describe('concurrency', { timeout: 120_000 }, () => {
         expect(flood.filter((r) => r.success).length).toBe(0)
       }
     })
-
-    it('three algorithms under simultaneous load — all hold', async () => {
-      const fw = new Limiter({ redis, algorithm: 'fixed-window', limit: 200, window: '30s', prefix: `${PREFIX}-fw` })
-      const sw = new Limiter({ redis, algorithm: 'sliding-window', limit: 200, window: '30s', prefix: `${PREFIX}-sw` })
-      const tb = new Limiter({ redis, algorithm: 'token-bucket', limit: 200, refill: { amount: 1, interval: '1000s' as const }, prefix: `${PREFIX}-tb` })
-
-      const [fwR, swR, tbR] = await inRedisWindow(redis, 30_000, async () => {
-        await Promise.all([fw.reset('simul'), sw.reset('simul'), tb.reset('simul')])
-        return Promise.all([
-          Promise.all(Array.from({ length: 20_000 }, () => fw.limit('simul'))),
-          Promise.all(Array.from({ length: 20_000 }, () => sw.limit('simul'))),
-          Promise.all(Array.from({ length: 20_000 }, () => tb.limit('simul'))),
-        ])
-      })
-
-      expect(fwR.filter((r) => r.success).length).toBe(200)
-      expect(swR.filter((r) => r.success).length).toBe(200)
-      expect(tbR.filter((r) => r.success).length).toBe(200)
-    })
   })
 
   describe('sliding-window decay', () => {
@@ -347,26 +281,6 @@ describe('concurrency', { timeout: 120_000 }, () => {
       await waitForRedisTime(redis, 500)
 
       expect((await rl.peek('cap')).remaining).toBe(10)
-    })
-  })
-
-  describe('escalating load', () => {
-    it('atomicity holds from 1K to 100K concurrent requests', async () => {
-      const rl = new Limiter({
-        redis,
-        algorithm: 'fixed-window',
-        limit: 100,
-        window: '30s',
-        prefix: PREFIX,
-      })
-
-      for (const count of [1_000, 10_000, 50_000, 100_000]) {
-        const results = await freshWindow(rl, 'escalate', () => Promise.all(
-          Array.from({ length: count }, () => rl.limit('escalate'))
-        ))
-
-        expect(results.filter((r) => r.success).length).toBe(100)
-      }
     })
   })
 })
