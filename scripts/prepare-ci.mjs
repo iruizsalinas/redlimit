@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const consumer = resolve(root, '.ci/consumer');
 await mkdir(consumer, { recursive: true });
 const npm = (...args) => execFileSync(process.execPath, [process.env.npm_execpath, ...args], { cwd: root, encoding: 'utf8' });
-const [{ filename }] = JSON.parse(npm('pack', '--json', '--ignore-scripts', '--pack-destination', '.ci'));
+const { filename } = JSON.parse(await readFile(resolve(root, '.ci/package-artifact.json'), 'utf8'));
 await writeFile(resolve(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
 npm('install', '--prefix', consumer, '--ignore-scripts', '--no-audit', '--no-fund', '--omit=optional', resolve(root, '.ci', filename));
 const cases = (await readdir(resolve(root, 'test/integration'))).filter(name => name.endsWith('.test.ts')).map(name => './test/integration/' + name);

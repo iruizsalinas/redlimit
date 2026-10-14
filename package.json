@@ -1,6 +1,7 @@
 {
   "name": "redlimit",
   "version": "2.0.5",
+  "private": true,
   "description": "Redis rate limiting with fixed window, sliding window, and token bucket algorithms",
   "type": "module",
   "exports": {
@@ -23,15 +24,16 @@
   ],
   "scripts": {
     "build": "tsdown",
+    "package": "npm run build && npm run package:prepare",
+    "package:prepare": "node scripts/package.mjs",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:ci": "node scripts/run-runtime.mjs node",
-    "test:prepare": "node scripts/prepare-ci.mjs",
+    "test:prepare": "npm run package:prepare && node scripts/prepare-ci.mjs",
     "test:runtime": "node scripts/run-runtime.mjs",
     "test:package-types": "tsc --ignoreConfig --strict --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck .ci/consumer/types.mts .ci/consumer/types.cts",
-    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "prepublishOnly": "npm run build"
+    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "peerDependencies": {
     "ioredis": ">=5.0.0",
