@@ -1,6 +1,6 @@
 {
   "name": "redlimit",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "private": true,
   "description": "Redis rate limiting with fixed window, sliding window, and token bucket algorithms",
   "type": "module",
@@ -62,7 +62,11 @@
     "type": "git",
     "url": "git+https://github.com/iruizsalinas/redlimit.git"
   },
-  "keywords": ["redis", "ratelimit", "backend"],
+  "keywords": [
+    "redis",
+    "ratelimit",
+    "backend"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=20"
