@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import Redis from 'ioredis'
+import { requireRedisUrl } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
 
 const PREFIX = 'test-io'
@@ -7,8 +8,10 @@ const PREFIX = 'test-io'
 describe('ioredis (integration)', () => {
   let redis: Redis
 
-  beforeAll(() => {
-    redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+  beforeAll(async () => {
+    redis = new Redis(requireRedisUrl(), { lazyConnect: true, connectTimeout: 5_000, retryStrategy: null })
+    redis.on('error', () => {})
+    await redis.connect()
   })
 
   afterAll(async () => {

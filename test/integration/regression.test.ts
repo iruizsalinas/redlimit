@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { createClient } from 'redis'
+import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
 
 const PREFIX = 'test-regression'
@@ -47,7 +47,7 @@ describe('regressions (integration)', () => {
   let redis: ReturnType<typeof createClient>
 
   beforeAll(async () => {
-    redis = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' })
+    redis = createClient()
     await redis.connect()
   })
 
@@ -104,7 +104,7 @@ describe('regressions (integration)', () => {
     // Trigger 12 real ban cycles through the API
     for (let i = 0; i < 12; i++) {
       await triggerBan(rl, 'user')
-      if (i < 11) await sleep(120) // wait for ban (60ms) + window (50ms) to expire
+      if (i < 11) await waitForRedisTime(redis, 120) // wait for ban (60ms) + window (50ms) to expire
     }
 
     // 12th ban should use the last step (300ms), not be capped
@@ -191,7 +191,7 @@ describe('regressions (integration)', () => {
     expect(msUntilReset).toBeGreaterThan(0)
 
     // Wait until the returned reset time, then try again — should succeed
-    await sleep(msUntilReset + 5)
+    await waitForRedisTime(redis, msUntilReset + 5)
 
     const allowed = await rl.limit('precise')
     expect(allowed.success).toBe(true)

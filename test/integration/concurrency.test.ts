@@ -1,14 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { createClient } from 'redis'
+import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
 
 const PREFIX = 'test-conc'
+
+async function redisNowMs(redis: ReturnType<typeof createClient>): Promise<number> {
+  const [seconds, microseconds] = await redis.time()
+  return Number(seconds) * 1000 + Math.floor(Number(microseconds) / 1000)
+}
 
 describe('concurrency', { timeout: 120_000 }, () => {
   let redis: ReturnType<typeof createClient>
 
   beforeAll(async () => {
-    redis = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' })
+    redis = createClient()
     await redis.connect()
   })
 
@@ -288,13 +293,13 @@ describe('concurrency', { timeout: 120_000 }, () => {
       expect(fill.filter((r) => r.success).length).toBe(100)
       expect((await rl.peek('decay')).remaining).toBe(0)
 
-      await new Promise((r) => setTimeout(r, 2200))
+      await waitForRedisTime(redis, 2200)
 
       const partial = await rl.peek('decay')
       expect(partial.remaining).toBeGreaterThan(0)
       expect(partial.remaining).toBeLessThanOrEqual(100)
 
-      await new Promise((r) => setTimeout(r, 2200))
+      await waitForRedisTime(redis, 2200)
 
       expect((await rl.peek('decay')).remaining).toBe(100)
     })
@@ -310,16 +315,19 @@ describe('concurrency', { timeout: 120_000 }, () => {
         prefix: PREFIX,
       })
 
-      await Promise.all(
-        Array.from({ length: 100 }, () => rl.limit('refill'))
-      )
-      expect((await rl.peek('refill')).remaining).toBe(0)
+      // Drain atomically; a multi-command drain can refill while it is in flight.
+      const started = await redisNowMs(redis)
+      expect((await rl.limit('refill', { cost: 100 })).remaining).toBe(0)
+      const drained = await redisNowMs(redis)
 
-      await new Promise((r) => setTimeout(r, 1000))
+      await waitForRedisTime(redis, 1000)
 
+      const beforePeek = await redisNowMs(redis)
       const refilled = await rl.peek('refill')
-      expect(refilled.remaining).toBeGreaterThanOrEqual(45)
-      expect(refilled.remaining).toBeLessThanOrEqual(55)
+      const afterPeek = await redisNowMs(redis)
+      // Bound the refill using Redis time rather than assuming exact scheduler timing.
+      expect(refilled.remaining).toBeGreaterThanOrEqual(Math.min(100, Math.floor((beforePeek - drained) * 0.05)))
+      expect(refilled.remaining).toBeLessThanOrEqual(Math.min(100, Math.ceil((afterPeek - started) * 0.05)))
     })
 
     it('never exceeds capacity after idle', async () => {
@@ -332,7 +340,7 @@ describe('concurrency', { timeout: 120_000 }, () => {
       })
 
       await rl.limit('cap')
-      await new Promise((r) => setTimeout(r, 500))
+      await waitForRedisTime(redis, 500)
 
       expect((await rl.peek('cap')).remaining).toBe(10)
     })

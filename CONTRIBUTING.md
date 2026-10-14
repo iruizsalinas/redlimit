@@ -1,39 +1,20 @@
 # Contributing
 
-Thanks for wanting to help out. Here's what you need to know.
+Thanks for wanting to help out with redlimit!
 
-## Setup
+## Bugs and issues
 
-```bash
-git clone https://github.com/iruizsalinas/redlimit.git
-cd redlimit
-npm install
-```
+If you find a bug, open an issue with:
 
-You'll need a local Redis instance running for integration tests. Default is `redis://localhost:6379` (set `REDIS_URL` in `.env` to change it).
+- A small example that reproduces it
+- What you expected
+- What happened
+- Your Redis version and client
 
-## Development
+## Pull requests
 
-```bash
-npm run lint              # type check
-npm run test:unit         # fast, no Redis needed
-npm run test:integration  # needs Redis
-npm test                  # everything
-```
+Keep changes focused and explain what they do. For bigger changes, open an issue first so we can discuss the approach.
 
-## Submitting changes
+## Questions
 
-1. Fork the repo and create a branch from `main`
-2. Make your changes
-3. Make sure `npm run lint` and `npm test` both pass
-4. Open a pull request
-
-Keep PRs focused on one thing. If you're fixing a bug and also want to refactor something nearby, split them into separate PRs.
-
-## Lua scripts
-
-The rate limiting logic runs as atomic Lua scripts inside Redis. If you're modifying an algorithm, make sure to test it under concurrency. Check out `test/integration/concurrency.test.ts` for that.
-
-## Questions?
-
-Open an issue. No question is too small.
+If you're unsure about something, open an issue. Questions and ideas are welcome.

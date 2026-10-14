@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { createClient } from 'redis'
+import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
 
 const PREFIX = 'test-fw'
@@ -8,7 +8,7 @@ describe('fixed-window (integration)', () => {
   let redis: ReturnType<typeof createClient>
 
   beforeAll(async () => {
-    redis = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' })
+    redis = createClient()
     await redis.connect()
   })
 
@@ -91,7 +91,7 @@ describe('fixed-window (integration)', () => {
     const denied = await rl.limit('user4')
     expect(denied.success).toBe(false)
 
-    await new Promise((r) => setTimeout(r, 1100))
+    await waitForRedisTime(redis, 1100)
 
     const allowed = await rl.limit('user4')
     expect(allowed.success).toBe(true)

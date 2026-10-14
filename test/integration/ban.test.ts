@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { createClient } from 'redis'
+import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
 
 const PREFIX = 'test-ban'
@@ -8,7 +8,7 @@ describe('ban escalation', () => {
   let redis: ReturnType<typeof createClient>
 
   beforeAll(async () => {
-    redis = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' })
+    redis = createClient()
     await redis.connect()
   })
 
@@ -62,7 +62,7 @@ describe('ban escalation', () => {
     await rl.limit('user2')
     await rl.limit('user2') // denied + banned for 1s
 
-    await new Promise((r) => setTimeout(r, 1100))
+    await waitForRedisTime(redis, 1100)
 
     // Ban expired — should be allowed (rate limit still active though)
     const result = await rl.peek('user2')
@@ -96,7 +96,7 @@ describe('ban escalation', () => {
     expect(pttl1).toBeLessThanOrEqual(1000)
 
     // Wait for ban to expire
-    await new Promise((r) => setTimeout(r, 1100))
+    await waitForRedisTime(redis, 1100)
 
     // Reset rate limit state for next test
     await rl.reset('user3')

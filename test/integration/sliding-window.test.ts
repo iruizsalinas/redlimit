@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { createClient } from 'redis'
+import { createClient } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
 
 const PREFIX = 'test-sw'
@@ -39,7 +39,7 @@ describe('sliding-window (integration)', () => {
   let redis: ReturnType<typeof createClient>
 
   beforeAll(async () => {
-    redis = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' })
+    redis = createClient()
     await redis.connect()
   })
 

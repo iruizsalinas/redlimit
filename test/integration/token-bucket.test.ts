@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { createClient } from 'redis'
+import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
 
 const PREFIX = 'test-tb'
@@ -8,7 +8,7 @@ describe('token-bucket (integration)', () => {
   let redis: ReturnType<typeof createClient>
 
   beforeAll(async () => {
-    redis = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' })
+    redis = createClient()
     await redis.connect()
   })
 
@@ -70,7 +70,7 @@ describe('token-bucket (integration)', () => {
     expect(denied.success).toBe(false)
 
     // Wait for refill (0.5 tokens/sec = 1 token in 2s)
-    await new Promise((r) => setTimeout(r, 2200))
+    await waitForRedisTime(redis, 2200)
 
     const allowed = await rl.limit('user3')
     expect(allowed.success).toBe(true)
@@ -103,7 +103,7 @@ describe('token-bucket (integration)', () => {
     })
 
     await rl.limit('user5')
-    await new Promise((r) => setTimeout(r, 200))
+    await waitForRedisTime(redis, 200)
 
     const peek = await rl.peek('user5')
     expect(peek.remaining).toBeLessThanOrEqual(5)

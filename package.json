@@ -24,10 +24,13 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
-    "test:unit": "vitest run test/unit",
-    "test:integration": "vitest run test/integration",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit",
+    "test:ci": "node scripts/run-runtime.mjs node",
+    "test:prepare": "node scripts/prepare-ci.mjs",
+    "test:runtime": "node scripts/run-runtime.mjs",
+    "test:package-types": "tsc --ignoreConfig --strict --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck .ci/consumer/types.mts .ci/consumer/types.cts",
+    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
@@ -44,6 +47,9 @@
   },
   "devDependencies": {
     "@types/node": "25.9.6",
+    "@vitest/expect": "4.1.11",
+    "chai": "6.3.0",
+    "esbuild": "0.28.2",
     "ioredis": "5.11.1",
     "redis": "5.12.1",
     "tsdown": "0.23.0",
