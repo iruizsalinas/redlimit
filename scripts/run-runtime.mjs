@@ -12,6 +12,9 @@ for (const [command, args] of runs[runtime]) {
     const child = spawn(command, args, { stdio: 'inherit' });
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Runtime suite exceeded 10 minutes')); }, 600_000);
     child.on('error', error => { clearTimeout(timer); reject(error); });
-    child.on('exit', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(command + ' exited with ' + code)); });
+    child.on('exit', (code, signal) => {
+      clearTimeout(timer);
+      code === 0 ? resolve() : reject(new Error(command + ' ' + args.join(' ') + ' exited with ' + (signal ?? code)));
+    });
   });
 }

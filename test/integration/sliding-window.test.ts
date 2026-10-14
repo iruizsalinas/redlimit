@@ -1,39 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { createClient } from '../support/redis.js'
+import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
+import { acrossRedisBoundary } from '../support/timing.js'
 
 const PREFIX = 'test-sw'
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function redisNowMs(redis: ReturnType<typeof createClient>): Promise<number> {
-  const [seconds, microseconds] = await redis.time()
-  return Number(seconds) * 1000 + Math.floor(Number(microseconds) / 1000)
-}
-
-async function waitForRedisPhase(
-  redis: ReturnType<typeof createClient>,
-  windowMs: number,
-  minInclusive: number,
-  maxExclusive: number,
-  timeoutMs = 5_000,
-): Promise<void> {
-  const started = Date.now()
-
-  while (Date.now() - started < timeoutMs) {
-    const phase = (await redisNowMs(redis)) % windowMs
-    if (phase >= minInclusive && phase < maxExclusive) {
-      return
-    }
-    await sleep(1)
-  }
-
-  throw new Error(
-    `Timed out waiting for Redis phase ${minInclusive}-${maxExclusive} of ${windowMs}ms window.`
-  )
-}
 
 describe('sliding-window (integration)', () => {
   let redis: ReturnType<typeof createClient>
@@ -122,27 +92,23 @@ describe('sliding-window (integration)', () => {
       redis,
       algorithm: 'sliding-window',
       limit: 3,
-      window: '200ms',
+      window: '2s',
       prefix: PREFIX,
     })
 
-    await waitForRedisPhase(redis, 200, 170, 195)
-
-    // Fill up the tail end of a window.
-    for (let i = 0; i < 3; i++) {
-      await rl.limit('user5')
-    }
-
-    const denied = await rl.limit('user5')
+    const { filled, probed: stillDenied } = await acrossRedisBoundary(redis, 2_000, async () => {
+      await rl.reset('user5')
+      const fill = await rl.limit('user5', { cost: 3 })
+      const denied = await rl.limit('user5')
+      return { fill, denied }
+    }, () => rl.peek('user5'))
+    expect(filled.fill.success).toBe(true)
+    const { denied } = filled
     expect(denied.success).toBe(false)
-
-    // Early in the next window, most of the previous pressure still applies.
-    await waitForRedisPhase(redis, 200, 5, 25)
-    const stillDenied = await rl.peek('user5')
     expect(stillDenied.success).toBe(false)
 
-    // Later in the same window, the weighted previous count has decayed enough to admit one more.
-    await waitForRedisPhase(redis, 200, 120, 170)
+    // At least 60% of a window later, the previous count permits another request.
+    await waitForRedisTime(redis, 1_200)
     const allowed = await rl.limit('user5')
     expect(allowed.success).toBe(true)
   })

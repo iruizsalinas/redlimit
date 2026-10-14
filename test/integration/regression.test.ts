@@ -1,39 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
+import { acrossRedisBoundary, inRedisWindow } from '../support/timing.js'
 
 const PREFIX = 'test-regression'
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function redisNowMs(redis: ReturnType<typeof createClient>): Promise<number> {
-  const [seconds, microseconds] = await redis.time()
-  return Number(seconds) * 1000 + Math.floor(Number(microseconds) / 1000)
-}
-
-async function waitForRedisPhase(
-  redis: ReturnType<typeof createClient>,
-  windowMs: number,
-  minInclusive: number,
-  maxExclusive: number,
-  timeoutMs = 5_000,
-): Promise<void> {
-  const started = Date.now()
-
-  while (Date.now() - started < timeoutMs) {
-    const phase = (await redisNowMs(redis)) % windowMs
-    if (phase >= minInclusive && phase < maxExclusive) {
-      return
-    }
-    await sleep(1)
-  }
-
-  throw new Error(
-    `Timed out waiting for Redis phase ${minInclusive}-${maxExclusive} of ${windowMs}ms window.`
-  )
-}
 
 async function triggerBan(limiter: Limiter, identifier: string) {
   const allowed = await limiter.limit(identifier)
@@ -86,29 +56,35 @@ describe('regressions (integration)', () => {
 
   it('supports escalation ladders longer than eleven total ban levels', async () => {
     const prefix = `${PREFIX}-ban-depth`
-    const rl = new Limiter({
-      redis,
-      algorithm: 'fixed-window',
-      limit: 1,
-      window: '50ms',
-      prefix,
-      ban: {
-        escalation: [
-          '60ms', '60ms', '60ms', '60ms', '60ms', '60ms',
-          '60ms', '60ms', '60ms', '60ms', '60ms', '300ms',
-        ],
-        history: '5s',
-      },
+    const { levels, finalBanTtl } = await inRedisWindow(redis, 5_000, async () => {
+      const keys = await redis.keys(`${prefix}*`)
+      if (keys.length > 0) await redis.del(keys)
+      const levels = []
+      // Fresh counters avoid waiting for a tiny fixed window to expire. The
+      // shared history still drives all twelve bans through the real API.
+      for (let i = 0; i < 12; i++) {
+        const rl = new Limiter({
+          redis, algorithm: 'fixed-window', limit: 1, window: '30s', prefix: `${prefix}-${i}`,
+          ban: {
+            shared: prefix,
+            escalation: [
+              '60ms', '60ms', '60ms', '60ms', '60ms', '60ms',
+              '60ms', '60ms', '60ms', '60ms', '60ms', '300ms',
+            ],
+            history: '5s',
+          },
+        })
+        levels.push({ allowed: await rl.limit('user'), denied: await rl.limit('user') })
+        if (i < 11) await waitForRedisTime(redis, 120)
+      }
+      return { levels, finalBanTtl: await redis.pTTL(`${prefix}:{user}:blocked`) }
     })
-
-    // Trigger 12 real ban cycles through the API
-    for (let i = 0; i < 12; i++) {
-      await triggerBan(rl, 'user')
-      if (i < 11) await waitForRedisTime(redis, 120) // wait for ban (60ms) + window (50ms) to expire
+    for (const level of levels) {
+      expect(level.allowed.success).toBe(true)
+      expect(level.denied.success).toBe(false)
     }
 
     // 12th ban should use the last step (300ms), not be capped
-    const finalBanTtl = await redis.pTTL(`${prefix}:{user}:blocked`)
     expect(finalBanTtl).toBeGreaterThan(220)
     expect(finalBanTtl).toBeLessThanOrEqual(320)
   })
@@ -146,47 +122,42 @@ describe('regressions (integration)', () => {
       redis,
       algorithm: 'sliding-window',
       limit: 1,
-      window: '200ms',
+      window: '2s',
       prefix,
     })
 
-    // Make a real request near the end of a window
-    await waitForRedisPhase(redis, 200, 170, 195)
-    await rl.limit('boundary')
-
-    // Early in the next window, previous weight still applies
-    await waitForRedisPhase(redis, 200, 5, 25)
-
-    const peek = await rl.peek('boundary')
+    const { filled, probed: { peek, second } } = await acrossRedisBoundary(redis, 2_000, async () => {
+      await rl.reset('boundary')
+      return rl.limit('boundary')
+    }, async () => ({ peek: await rl.peek('boundary'), second: await rl.limit('boundary') }))
+    expect(filled.success).toBe(true)
     expect(peek.success).toBe(false)
-
-    const second = await rl.limit('boundary')
     expect(second.success).toBe(false)
   })
 
   it('sliding-window reset time is accurate, not just the next window boundary', async () => {
     const prefix = `${PREFIX}-sw-reset`
-    const windowMs = 200
+    const windowMs = 2_000
     const rl = new Limiter({
       redis,
       algorithm: 'sliding-window',
       limit: 1,
-      window: '200ms',
+      window: '2s',
       prefix,
     })
 
-    // Fill at the end of a window so previous weight carries into next
-    await waitForRedisPhase(redis, windowMs, 170, 195)
-    await rl.limit('precise')
-
-    // Move into the next window — should be denied
-    await waitForRedisPhase(redis, windowMs, 10, 30)
-    const denied = await rl.limit('precise')
+    const { filled, probed: { denied, msUntilReset } } = await acrossRedisBoundary(redis, windowMs, async () => {
+      await rl.reset('precise')
+      return rl.limit('precise')
+    }, async () => {
+      const denied = await rl.limit('precise')
+      return { denied, msUntilReset: denied.reset - Date.now() }
+    })
+    expect(filled.success).toBe(true)
     expect(denied.success).toBe(false)
 
     // The reset time should be sooner than the next window boundary
     // (recovery happens via decay, not by waiting for a full window)
-    const msUntilReset = denied.reset - Date.now()
     expect(msUntilReset).toBeLessThan(windowMs)
     expect(msUntilReset).toBeGreaterThan(0)
 

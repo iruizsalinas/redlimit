@@ -1,16 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
+import { inRedisWindow, redisNowMs } from '../support/timing.js'
 
 const PREFIX = 'test-conc'
 
-async function redisNowMs(redis: ReturnType<typeof createClient>): Promise<number> {
-  const [seconds, microseconds] = await redis.time()
-  return Number(seconds) * 1000 + Math.floor(Number(microseconds) / 1000)
-}
-
 describe('concurrency', { timeout: 120_000 }, () => {
   let redis: ReturnType<typeof createClient>
+
+  function freshWindow<T>(limiter: Limiter, key: string, run: () => Promise<T>, windowMs = 30_000): Promise<T> {
+    return inRedisWindow(redis, windowMs, async () => {
+      await limiter.reset(key)
+      return run()
+    })
+  }
 
   beforeAll(async () => {
     redis = createClient()
@@ -34,9 +37,9 @@ describe('concurrency', { timeout: 120_000 }, () => {
     ])('%s: 10,000 concurrent requests — exactly 100 allowed', async (name, config) => {
       const rl = new Limiter({ redis, ...config, prefix: PREFIX })
 
-      const results = await Promise.all(
+      const results = await freshWindow(rl, `atomicity-${name}`, () => Promise.all(
         Array.from({ length: 10_000 }, () => rl.limit(`atomicity-${name}`))
-      )
+      ))
 
       expect(results.filter((r) => r.success).length).toBe(100)
     })
@@ -50,9 +53,9 @@ describe('concurrency', { timeout: 120_000 }, () => {
         prefix: PREFIX,
       })
 
-      const results = await Promise.all(
+      const results = await freshWindow(rl, 'atomicity-100k', () => Promise.all(
         Array.from({ length: 100_000 }, () => rl.limit('atomicity-100k'))
-      )
+      ), 3_600_000)
 
       expect(results.filter((r) => r.success).length).toBe(100)
     })
@@ -99,9 +102,9 @@ describe('concurrency', { timeout: 120_000 }, () => {
         prefix: PREFIX,
       })
 
-      const results = await Promise.all(
+      const results = await freshWindow(rl, 'cost-3', () => Promise.all(
         Array.from({ length: 50 }, () => rl.limit('cost-3', { cost: 3 }))
-      )
+      ))
 
       expect(results.filter((r) => r.success).length).toBe(33)
     })
@@ -117,9 +120,12 @@ describe('concurrency', { timeout: 120_000 }, () => {
 
       const costs = Array.from({ length: 5_000 }, () => Math.ceil(Math.random() * 5))
 
-      const results = await Promise.all(
-        costs.map((cost) => rl.limit('cost-rand', { cost }).then((r) => ({ cost, success: r.success })))
-      )
+      const { results, peek } = await freshWindow(rl, 'cost-rand', async () => {
+        const results = await Promise.all(
+          costs.map((cost) => rl.limit('cost-rand', { cost }).then((r) => ({ cost, success: r.success })))
+        )
+        return { results, peek: await rl.peek('cost-rand') }
+      })
 
       let totalConsumed = 0
       for (const r of results) {
@@ -128,7 +134,6 @@ describe('concurrency', { timeout: 120_000 }, () => {
 
       expect(totalConsumed).toBeLessThanOrEqual(1000)
 
-      const peek = await rl.peek('cost-rand')
       expect(peek.remaining).toBe(1000 - totalConsumed)
     })
   })
@@ -143,12 +148,12 @@ describe('concurrency', { timeout: 120_000 }, () => {
         prefix: PREFIX,
       })
 
-      for (let i = 0; i < 100; i++) {
-        const r = await rl.limit('remaining-seq')
-        expect(r.remaining).toBe(99 - i)
-      }
-
-      const denied = await rl.limit('remaining-seq')
+      const { results, denied } = await freshWindow(rl, 'remaining-seq', async () => {
+        const results = []
+        for (let i = 0; i < 100; i++) results.push(await rl.limit('remaining-seq'))
+        return { results, denied: await rl.limit('remaining-seq') }
+      })
+      for (let i = 0; i < results.length; i++) expect(results[i].remaining).toBe(99 - i)
       expect(denied.success).toBe(false)
       expect(denied.remaining).toBe(0)
     })
@@ -222,18 +227,14 @@ describe('concurrency', { timeout: 120_000 }, () => {
         prefix: PREFIX,
       })
 
-      await Promise.all(
-        Array.from({ length: 100 }, () => rl.limit('reset-cap'))
-      )
-
-      expect((await rl.limit('reset-cap')).success).toBe(false)
-
-      await rl.reset('reset-cap')
-
-      const results = await Promise.all(
-        Array.from({ length: 500 }, () => rl.limit('reset-cap'))
-      )
-
+      const { denied, results } = await freshWindow(rl, 'reset-cap', async () => {
+        await Promise.all(Array.from({ length: 100 }, () => rl.limit('reset-cap')))
+        const denied = await rl.limit('reset-cap')
+        await rl.reset('reset-cap')
+        const results = await Promise.all(Array.from({ length: 500 }, () => rl.limit('reset-cap')))
+        return { denied, results }
+      })
+      expect(denied.success).toBe(false)
       expect(results.filter((r) => r.success).length).toBe(100)
     })
   })
@@ -250,11 +251,10 @@ describe('concurrency', { timeout: 120_000 }, () => {
         const rl = new Limiter({ redis, ...config, prefix: PREFIX })
         const key = `exhaust-${config.algorithm}`
 
-        await Promise.all(Array.from({ length: 50 }, () => rl.limit(key)))
-
-        const flood = await Promise.all(
-          Array.from({ length: 1_000 }, () => rl.limit(key))
-        )
+        const flood = await freshWindow(rl, key, async () => {
+          await Promise.all(Array.from({ length: 50 }, () => rl.limit(key)))
+          return Promise.all(Array.from({ length: 1_000 }, () => rl.limit(key)))
+        })
 
         expect(flood.filter((r) => r.success).length).toBe(0)
       }
@@ -265,11 +265,14 @@ describe('concurrency', { timeout: 120_000 }, () => {
       const sw = new Limiter({ redis, algorithm: 'sliding-window', limit: 200, window: '30s', prefix: `${PREFIX}-sw` })
       const tb = new Limiter({ redis, algorithm: 'token-bucket', limit: 200, refill: { amount: 1, interval: '1000s' as const }, prefix: `${PREFIX}-tb` })
 
-      const [fwR, swR, tbR] = await Promise.all([
-        Promise.all(Array.from({ length: 20_000 }, () => fw.limit('simul'))),
-        Promise.all(Array.from({ length: 20_000 }, () => sw.limit('simul'))),
-        Promise.all(Array.from({ length: 20_000 }, () => tb.limit('simul'))),
-      ])
+      const [fwR, swR, tbR] = await inRedisWindow(redis, 30_000, async () => {
+        await Promise.all([fw.reset('simul'), sw.reset('simul'), tb.reset('simul')])
+        return Promise.all([
+          Promise.all(Array.from({ length: 20_000 }, () => fw.limit('simul'))),
+          Promise.all(Array.from({ length: 20_000 }, () => sw.limit('simul'))),
+          Promise.all(Array.from({ length: 20_000 }, () => tb.limit('simul'))),
+        ])
+      })
 
       expect(fwR.filter((r) => r.success).length).toBe(200)
       expect(swR.filter((r) => r.success).length).toBe(200)
@@ -287,11 +290,12 @@ describe('concurrency', { timeout: 120_000 }, () => {
         prefix: PREFIX,
       })
 
-      const fill = await Promise.all(
-        Array.from({ length: 100 }, () => rl.limit('decay'))
-      )
+      const { fill, peek } = await freshWindow(rl, 'decay', async () => ({
+        fill: await Promise.all(Array.from({ length: 100 }, () => rl.limit('decay'))),
+        peek: await rl.peek('decay'),
+      }), 2_000)
       expect(fill.filter((r) => r.success).length).toBe(100)
-      expect((await rl.peek('decay')).remaining).toBe(0)
+      expect(peek.remaining).toBe(0)
 
       await waitForRedisTime(redis, 2200)
 
@@ -357,11 +361,9 @@ describe('concurrency', { timeout: 120_000 }, () => {
       })
 
       for (const count of [1_000, 10_000, 50_000, 100_000]) {
-        await rl.reset('escalate')
-
-        const results = await Promise.all(
+        const results = await freshWindow(rl, 'escalate', () => Promise.all(
           Array.from({ length: count }, () => rl.limit('escalate'))
-        )
+        ))
 
         expect(results.filter((r) => r.success).length).toBe(100)
       }

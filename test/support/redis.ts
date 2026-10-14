@@ -9,16 +9,18 @@ export function requireRedisUrl(): string {
 }
 
 // Keep test setup identical for both clients while passing the real client to Limiter.
-export function createClient(): ReturnType<typeof createNodeClient> {
+export function createClient({ socketTimeoutMs = 30_000 } = {}): ReturnType<typeof createNodeClient> {
   const url = requireRedisUrl()
   const client = process.env.REDIS_CLIENT
   if (client === 'redis') {
-    const redis = createNodeClient({ url, socket: { connectTimeout: 5_000, reconnectStrategy: false } })
+    const redis = createNodeClient({ url, socket: { connectTimeout: 5_000, socketTimeout: socketTimeoutMs, reconnectStrategy: false } })
     redis.on('error', () => {}) // Command/connect rejections are asserted by the suite.
     return redis
   }
   if (client !== 'ioredis') throw new Error('REDIS_CLIENT must be redis or ioredis')
-  const redis = new Redis(url, { lazyConnect: true, connectTimeout: 5_000, retryStrategy: null })
+  // A test deadline does not cancel Redis commands or quit() queued behind them.
+  // Close an unresponsive socket so pending commands and teardown can settle.
+  const redis = new Redis(url, { lazyConnect: true, connectTimeout: 5_000, socketTimeout: socketTimeoutMs, retryStrategy: null })
   redis.on('error', () => {})
   const aliases: Record<string, (...args: any[]) => unknown> = {
     scriptFlush: () => redis.script('FLUSH'),
@@ -26,6 +28,7 @@ export function createClient(): ReturnType<typeof createNodeClient> {
     zCard: (key: string) => redis.zcard(key),
     zAdd: (key: string, entry: { score: number; value: string }) => redis.zadd(key, entry.score, entry.value),
     del: (...keys: (string | string[])[]) => redis.del(...keys.flat()),
+    destroy: () => redis.disconnect(),
   }
   return new Proxy(redis, {
     get(target, name) {
