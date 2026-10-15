@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createCluster, createClientPool, createSentinel } from 'redis'
 import { Cluster } from 'ioredis'
+import Valkey, { Cluster as ValkeyCluster } from 'iovalkey'
 import { createAdapter } from '../../src/adapter.js'
 
 describe('createAdapter', () => {
@@ -231,6 +232,8 @@ describe('createAdapter', () => {
     ['node-redis pool', () => createClientPool({ url: 'redis://127.0.0.1:1' }), 'evalSha'],
     ['node-redis sentinel', () => createSentinel({ name: 'main', sentinelRootNodes: [{ host: '127.0.0.1', port: 1 }] }), 'evalSha'],
     ['ioredis cluster', () => new Cluster([{ host: '127.0.0.1', port: 1 }], { lazyConnect: true }), 'evalsha'],
+    ['iovalkey standalone', () => new Valkey({ lazyConnect: true }), 'evalsha'],
+    ['iovalkey cluster', () => new ValkeyCluster([{ host: '127.0.0.1', port: 1 }], { lazyConnect: true }), 'evalsha'],
   ] as const)('detects a %s', async (_name, create, method) => {
     const client = create() as any
     const evalSha = vi.spyOn(client, method).mockResolvedValue([1, 9, 1000, 0])

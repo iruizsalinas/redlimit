@@ -481,7 +481,7 @@ describe('Limiter', () => {
       expect(result.remaining).toBe(10)
     })
 
-    it.each(['REDLIMIT_INVALID_CONFIG', 'ERR REDLIMIT_INVALID_CONFIG'])(
+    it.each(['REDLIMIT_INVALID_CONFIG', 'ERR REDLIMIT_INVALID_CONFIG', 'REDLIMIT_INVALID_CONFIG:'])(
       'fail: open propagates %s errors from limit and peek', async prefix => {
         const error = new Error(`${prefix} window produces timestamps that are too large to represent safely`)
         redis.evalSha.mockRejectedValue(error)

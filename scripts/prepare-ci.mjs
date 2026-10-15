@@ -18,7 +18,7 @@ for (const runtime of ['node', 'bun', 'deno']) {
       stdin: { contents: cases.map(name => 'import ' + JSON.stringify(name)).join(';'), resolveDir: root },
       outfile: resolve(consumer, runtime + '-' + format + '.test.mjs'),
       bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', mainFields: ['module', 'main'],
-      external: ['node:*', 'bun:test', 'redlimit', 'redis', 'ioredis'],
+      external: ['node:*', 'bun:test', 'redlimit', 'redis', 'ioredis', 'iovalkey', '@valkey/valkey-glide'],
       plugins: [{ name: 'runtime-tests', setup(builder) {
         builder.onResolve({ filter: /^vitest$/ }, () => ({ path: resolve(root, 'scripts/adapters/' + runtime + '.mjs') }));
         builder.onResolve({ filter: /src\/ratelimit\.js$/ }, () => format === 'cjs'
@@ -34,7 +34,7 @@ await build({
   stdin: { contents: "import './test/integration/cluster-routing.test.ts'", resolveDir: root },
   outfile: resolve(consumer, 'cluster-routing.test.mjs'),
   bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', mainFields: ['module', 'main'],
-  external: ['node:*', 'redlimit', 'redis', 'ioredis'],
+  external: ['node:*', 'redlimit', 'redis', 'ioredis', 'iovalkey', '@valkey/valkey-glide'],
   plugins: [{ name: 'cluster-tests', setup(builder) {
     builder.onResolve({ filter: /^vitest$/ }, () => ({ path: resolve(root, 'scripts/adapters/node.mjs') }));
     builder.onResolve({ filter: /src\/ratelimit\.js$/ }, () => ({ path: 'redlimit', external: true }));

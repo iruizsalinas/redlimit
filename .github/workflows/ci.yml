@@ -105,6 +105,8 @@ jobs:
           # Valkey is the common open-source Redis replacement; same scripts, separate codebase.
           - { node: '24', server: Valkey, image: valkey/valkey, redis: '9.1.2-alpine', client: redis }
           - { node: '24', server: Valkey, image: valkey/valkey, redis: '9.1.2-alpine', client: ioredis }
+          - { node: '24', server: Valkey, image: valkey/valkey, redis: '9.1.2-alpine', client: iovalkey }
+          - { node: '24', server: Valkey, image: valkey/valkey, redis: '9.1.2-alpine', client: glide }
     services:
       redis:
         image: ${{ matrix.image || 'redis' }}:${{ matrix.redis }}
@@ -146,7 +148,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        client: [redis, ioredis]
+        client: [redis, ioredis, iovalkey, glide]
         masters: [1, 3]
     env:
       REDIS_URL: redis://127.0.0.1:6379

@@ -1,5 +1,7 @@
 import { createClient as createNodeClient, createCluster as createNodeCluster } from 'redis'
 import Redis, { Cluster } from 'ioredis'
+import Valkey, { Cluster as ValkeyCluster } from 'iovalkey'
+import type { GlideClient, GlideClusterClient } from '@valkey/valkey-glide'
 
 export function requireRedisUrl(): string {
   if (process.env.CI !== 'true' || !process.env.REDIS_URL) {
@@ -21,12 +23,54 @@ async function deleteEach(keys: string[], del: (key: string) => Promise<number>)
   return counts.reduce((sum, count) => sum + count, 0)
 }
 
-// Keep test setup identical for both clients while passing the real client to Limiter.
+// Keep the shared suite's node-redis utility API while forwarding limiter calls
+// to the real GLIDE client. Import native bindings only in GLIDE matrix cells.
+function createGlideTestClient(url: string, cluster: boolean, requestTimeout: number): ReturnType<typeof createNodeClient> {
+  let redis: GlideClient | GlideClusterClient
+  let open = false
+  const controls = {
+    async connect() {
+      const { GlideClient, GlideClusterClient } = await import('@valkey/valkey-glide')
+      const address = new URL(url)
+      redis = await (cluster ? GlideClusterClient : GlideClient).createClient({
+        addresses: [{ host: address.hostname, port: Number(address.port || 6379) }],
+        requestTimeout,
+        inflightRequestsLimit: 10_000,
+      })
+      open = true
+    },
+    async quit() { redis.close(); open = false },
+    destroy() { redis.close(); open = false },
+    del: (...keys: (string | string[])[]) => cluster
+      ? deleteEach(keys.flat(), key => redis.del([key]))
+      : redis.del(keys.flat()),
+    pTTL: (key: string) => redis.pttl(key),
+    zCard: (key: string) => redis.zcard(key),
+    zAdd: (key: string, entry: { score: number; value: string }) => redis.zadd(key, { [entry.value]: entry.score }),
+    async keys(pattern: string) {
+      if (!cluster) return redis.customCommand(['KEYS', pattern])
+      const results = await (redis as GlideClusterClient).customCommand(['KEYS', pattern], { route: 'allPrimaries' })
+      return Object.values(results as Record<string, string[]>).flat()
+    },
+    time: () => cluster ? (redis as GlideClusterClient).time({ route: 'randomNode' }) : (redis as GlideClient).time(),
+  }
+  return new Proxy(controls, {
+    get(target, name) {
+      if (name === 'isOpen') return open
+      if (name in target) return Reflect.get(target, name)
+      const value = Reflect.get(redis, name, redis)
+      return typeof value === 'function' ? value.bind(redis) : value
+    },
+  }) as unknown as ReturnType<typeof createNodeClient>
+}
+
+// Keep test setup identical for all clients while preserving their command APIs.
 // REDIS_TOPOLOGY=cluster passes cluster clients so routing and CROSSSLOT checks are exercised.
 export function createClient({ socketTimeoutMs = 30_000 } = {}): ReturnType<typeof createNodeClient> {
   const url = requireRedisUrl()
   const client = process.env.REDIS_CLIENT
   const cluster = isCluster()
+  if (client === 'glide') return createGlideTestClient(url, cluster, socketTimeoutMs)
   if (client === 'redis') {
     const socket = { connectTimeout: 5_000, socketTimeout: socketTimeoutMs, reconnectStrategy: false as const }
     if (!cluster) {
@@ -45,14 +89,17 @@ export function createClient({ socketTimeoutMs = 30_000 } = {}): ReturnType<type
       },
     }) as unknown as ReturnType<typeof createNodeClient>
   }
-  if (client !== 'ioredis') throw new Error('REDIS_CLIENT must be redis or ioredis')
+  if (client !== 'ioredis' && client !== 'iovalkey') throw new Error('REDIS_CLIENT must be redis, ioredis, iovalkey or glide')
   // A test deadline does not cancel Redis commands or quit() queued behind them.
   // Close an unresponsive socket so pending commands and teardown can settle.
   const options = { connectTimeout: 5_000, socketTimeout: socketTimeoutMs, retryStrategy: null }
-  const redis: Redis | Cluster = cluster
-    ? new Cluster([url], { lazyConnect: true, clusterRetryStrategy: () => null, redisOptions: options })
-    : new Redis(url, { lazyConnect: true, ...options })
-  redis.on('error', () => {})
+  const Standalone = client === 'iovalkey' ? Valkey : Redis
+  const ClusterClient = client === 'iovalkey' ? ValkeyCluster : Cluster
+  const redis = cluster
+    ? new ClusterClient([url], { lazyConnect: true, clusterRetryStrategy: () => null, redisOptions: options })
+    : new Standalone(url, { lazyConnect: true, ...options })
+  const events = redis as Redis | Cluster
+  events.on('error', () => {})
   const aliases: Record<string, (...args: any[]) => unknown> = {
     scriptFlush: () => redis.script('FLUSH'),
     pTTL: (key: string) => redis.pttl(key),

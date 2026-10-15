@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { createClient as createNodeClient, createClientPool, RESP_TYPES } from 'redis'
 import Redis from 'ioredis'
-import { requireRedisUrl } from '../support/redis.js'
+import Valkey from 'iovalkey'
+import { isCluster, requireRedisUrl } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
 
 // Each matrix cell covers the configurations users commonly pass for its own client.
@@ -89,11 +90,12 @@ if (client === 'redis') {
   })
 }
 
-if (client === 'ioredis') {
-  describe('ioredis client variants', () => {
+if (client === 'ioredis' || client === 'iovalkey') {
+  const IoClient = client === 'iovalkey' ? Valkey : Redis
+  describe(`${client} client variants`, () => {
     it('keyPrefix is applied to every key the limiter touches', async () => {
-      const redis = new Redis(requireRedisUrl(), { lazyConnect: true, retryStrategy: null, keyPrefix: 'app:' })
-      const raw = new Redis(requireRedisUrl(), { lazyConnect: true, retryStrategy: null })
+      const redis = new IoClient(requireRedisUrl(), { lazyConnect: true, retryStrategy: null, keyPrefix: 'app:' })
+      const raw = new IoClient(requireRedisUrl(), { lazyConnect: true, retryStrategy: null })
       redis.on('error', () => {})
       raw.on('error', () => {})
       await Promise.all([redis.connect(), raw.connect()])
@@ -114,13 +116,28 @@ if (client === 'ioredis') {
     })
 
     it('lazyConnect clients connect on the first limiter call', async () => {
-      const redis = new Redis(requireRedisUrl(), { lazyConnect: true, retryStrategy: null })
+      const redis = new IoClient(requireRedisUrl(), { lazyConnect: true, retryStrategy: null })
       redis.on('error', () => {})
       try {
         expect(redis.status).toBe('wait')
         await exerciseLimiter(redis, 'test-variant-lazy')
         expect(redis.status).toBe('ready')
       } finally { await redis.quit() }
+    })
+  })
+}
+
+if (client === 'glide') {
+  describe('GLIDE client variants', () => {
+    it('accepts the real client without the shared test utility proxy', async () => {
+      const { GlideClient, GlideClusterClient } = await import('@valkey/valkey-glide')
+      const address = new URL(requireRedisUrl())
+      const redis = await (isCluster() ? GlideClusterClient : GlideClient).createClient({
+        addresses: [{ host: address.hostname, port: Number(address.port || 6379) }],
+      })
+      try {
+        await exerciseLimiter(redis, 'test-variant-glide')
+      } finally { redis.close() }
     })
   })
 }

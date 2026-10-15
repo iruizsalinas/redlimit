@@ -36,10 +36,18 @@
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "peerDependencies": {
+    "@valkey/valkey-glide": ">=2.5.3",
     "ioredis": ">=5.0.0",
+    "iovalkey": ">=0.4.0",
     "redis": ">=5.0.0"
   },
   "peerDependenciesMeta": {
+    "@valkey/valkey-glide": {
+      "optional": true
+    },
+    "iovalkey": {
+      "optional": true
+    },
     "ioredis": {
       "optional": true
     },
@@ -49,10 +57,12 @@
   },
   "devDependencies": {
     "@types/node": "25.9.6",
+    "@valkey/valkey-glide": "2.5.3",
     "@vitest/expect": "4.1.11",
     "chai": "6.3.0",
     "esbuild": "0.28.2",
     "ioredis": "5.11.1",
+    "iovalkey": "0.4.0",
     "redis": "5.12.1",
     "tsdown": "0.23.0",
     "typescript": "6.0.3",
