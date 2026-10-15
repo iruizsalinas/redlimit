@@ -1,6 +1,6 @@
 {
   "name": "redlimit",
-  "version": "2.0.6",
+  "version": "2.1.0",
   "private": true,
   "description": "Redis rate limiting with fixed window, sliding window, and token bucket algorithms",
   "type": "module",
