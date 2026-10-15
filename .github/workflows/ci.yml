@@ -103,6 +103,10 @@ jobs:
           - { node: '24', redis: '7.4.11-alpine', client: redis }
           - { node: '24', redis: '7.4.11-alpine', client: ioredis }
           # Valkey is the common open-source Redis replacement; same scripts, separate codebase.
+          - { node: '24', server: Valkey, image: valkey/valkey, redis: '7.2.14-alpine', client: redis }
+          - { node: '24', server: Valkey, image: valkey/valkey, redis: '7.2.14-alpine', client: ioredis }
+          - { node: '24', server: Valkey, image: valkey/valkey, redis: '7.2.14-alpine', client: iovalkey }
+          - { node: '24', server: Valkey, image: valkey/valkey, redis: '7.2.14-alpine', client: glide }
           - { node: '24', server: Valkey, image: valkey/valkey, redis: '9.1.2-alpine', client: redis }
           - { node: '24', server: Valkey, image: valkey/valkey, redis: '9.1.2-alpine', client: ioredis }
           - { node: '24', server: Valkey, image: valkey/valkey, redis: '9.1.2-alpine', client: iovalkey }
