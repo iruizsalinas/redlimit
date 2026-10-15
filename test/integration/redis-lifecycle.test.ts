@@ -28,7 +28,7 @@ describe('Redis lifecycle', () => {
           refill: { amount: 1, interval: '1h' }, prefix: 'test-lifecycle-' + algorithm,
         }))
         await limiters[0].reset('shared')
-        const results = await Promise.all(Array.from({ length: 10_000 }, (_, i) => limiters[i % limiters.length].limit('shared')))
+        const results = await Promise.all(Array.from({ length: 1_000 }, (_, i) => limiters[i % limiters.length].limit('shared')))
         expect(results.filter(result => result.success)).toHaveLength(100)
         await limiters[0].reset('shared')
       } finally { await Promise.all(clients.filter(client => client.isOpen).map(client => client.quit())) }

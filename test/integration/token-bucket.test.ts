@@ -26,7 +26,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refill: { amount: 1, interval: '1s' },
+      refill: { amount: 1, interval: '1h' },
       prefix: PREFIX,
     })
 
@@ -39,7 +39,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refill: { amount: 1, interval: '1s' },
+      refill: { amount: 1, interval: '1h' },
       prefix: PREFIX,
     })
 
@@ -57,14 +57,12 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 3,
-      refill: { amount: 1, interval: '2s' }, // 0.5 tokens/sec — slow enough that network latency won't refill during drain
+      refill: { amount: 1, interval: '2s' },
       prefix: PREFIX,
     })
 
-    // Drain the bucket
-    for (let i = 0; i < 3; i++) {
-      await rl.limit('user3')
-    }
+    // Drain atomically; a multi-command drain can refill while it is in flight.
+    expect((await rl.limit('user3', { cost: 3 })).success).toBe(true)
 
     const denied = await rl.limit('user3')
     expect(denied.success).toBe(false)
@@ -81,7 +79,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 10,
-      refill: { amount: 1, interval: '1s' },
+      refill: { amount: 1, interval: '1h' },
       prefix: PREFIX,
     })
 
@@ -114,7 +112,7 @@ describe('token-bucket (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refill: { amount: 1, interval: '1s' },
+      refill: { amount: 1, interval: '1h' },
       prefix: PREFIX,
     })
 

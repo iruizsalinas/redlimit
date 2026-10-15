@@ -28,7 +28,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 3,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -46,7 +46,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'sliding-window',
       limit: 3,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -62,7 +62,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'token-bucket',
       limit: 5,
-      refill: { amount: 1, interval: '1s' },
+      refill: { amount: 1, interval: '1h' },
       prefix: PREFIX,
     })
 
@@ -78,7 +78,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 5,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -95,7 +95,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 100,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -111,7 +111,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 10,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -128,7 +128,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
       ban: {
         escalation: ['5s'],
@@ -148,7 +148,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 100,
-      window: '30s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -164,7 +164,7 @@ describe('ioredis (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 10,
-      window: '30s',
+      window: '1h',
       prefix: PREFIX,
     })
 

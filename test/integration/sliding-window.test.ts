@@ -27,7 +27,7 @@ describe('sliding-window (integration)', () => {
       redis,
       algorithm: 'sliding-window',
       limit: 5,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -42,7 +42,7 @@ describe('sliding-window (integration)', () => {
       redis,
       algorithm: 'sliding-window',
       limit: 3,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -59,7 +59,7 @@ describe('sliding-window (integration)', () => {
       redis,
       algorithm: 'sliding-window',
       limit: 10,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -75,7 +75,7 @@ describe('sliding-window (integration)', () => {
       redis,
       algorithm: 'sliding-window',
       limit: 5,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 

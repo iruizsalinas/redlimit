@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
-import { acrossRedisBoundary, inRedisWindow } from '../support/timing.js'
+import { acrossRedisBoundary, redisNowMs } from '../support/timing.js'
 
 const PREFIX = 'test-regression'
 
@@ -36,57 +36,51 @@ describe('regressions (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '1s',
+      window: '1h',
       prefix,
       ban: {
-        escalation: ['200ms', '500ms', '900ms'],
-        history: '700ms',
+        escalation: ['2s', '5s', '9s'],
+        history: '7s',
       },
     })
 
-    const now = Date.now()
-    await redis.zAdd(`${prefix}:{user}:banhist`, { score: now - 900, value: 'expired-seed' })
-    await redis.zAdd(`${prefix}:{user}:banhist`, { score: now - 300, value: 'recent-seed' })
+    // Seed on the Redis clock, which is the one the scripts trim history against.
+    const now = await redisNowMs(redis)
+    await redis.zAdd(`${prefix}:{user}:banhist`, { score: now - 9_000, value: 'expired-seed' })
+    await redis.zAdd(`${prefix}:{user}:banhist`, { score: now - 3_000, value: 'recent-seed' })
 
     await triggerBan(rl, 'user')
     const banTtl = await redis.pTTL(`${prefix}:{user}:blocked`)
-    expect(banTtl).toBeGreaterThan(350)
-    expect(banTtl).toBeLessThanOrEqual(550)
+    expect(banTtl).toBeGreaterThan(4_000)
+    expect(banTtl).toBeLessThanOrEqual(5_000)
   })
 
   it('supports escalation ladders longer than eleven total ban levels', async () => {
     const prefix = `${PREFIX}-ban-depth`
-    const { levels, finalBanTtl } = await inRedisWindow(redis, 5_000, async () => {
-      const keys = await redis.keys(`${prefix}*`)
-      if (keys.length > 0) await redis.del(keys)
-      const levels = []
-      // Fresh counters avoid waiting for a tiny fixed window to expire. The
-      // shared history still drives all twelve bans through the real API.
-      for (let i = 0; i < 12; i++) {
-        const rl = new Limiter({
-          redis, algorithm: 'fixed-window', limit: 1, window: '30s', prefix: `${prefix}-${i}`,
-          ban: {
-            shared: prefix,
-            escalation: [
-              '60ms', '60ms', '60ms', '60ms', '60ms', '60ms',
-              '60ms', '60ms', '60ms', '60ms', '60ms', '300ms',
-            ],
-            history: '5s',
-          },
-        })
-        levels.push({ allowed: await rl.limit('user'), denied: await rl.limit('user') })
-        if (i < 11) await waitForRedisTime(redis, 120)
-      }
-      return { levels, finalBanTtl: await redis.pTTL(`${prefix}:{user}:blocked`) }
-    })
-    for (const level of levels) {
-      expect(level.allowed.success).toBe(true)
-      expect(level.denied.success).toBe(false)
+    const blockedKey = `${prefix}:{user}:blocked`
+    // Fresh counters avoid waiting for a fixed window to roll over. The shared
+    // history still drives all twelve bans through the real API.
+    for (let i = 0; i < 12; i++) {
+      const rl = new Limiter({
+        redis, algorithm: 'fixed-window', limit: 1, window: '1h', prefix: `${prefix}-${i}`,
+        ban: {
+          shared: prefix,
+          escalation: [
+            '10s', '10s', '10s', '10s', '10s', '10s',
+            '10s', '10s', '10s', '10s', '10s', '1m',
+          ],
+          history: '1h',
+        },
+      })
+      await triggerBan(rl, 'user')
+      // Lift the ban instead of waiting for it; the history still records it.
+      if (i < 11) await redis.del(blockedKey)
     }
 
-    // 12th ban should use the last step (300ms), not be capped
-    expect(finalBanTtl).toBeGreaterThan(220)
-    expect(finalBanTtl).toBeLessThanOrEqual(320)
+    // 12th ban should use the last step (1m), not be capped
+    const finalBanTtl = await redis.pTTL(blockedKey)
+    expect(finalBanTtl).toBeGreaterThan(50_000)
+    expect(finalBanTtl).toBeLessThanOrEqual(60_000)
   })
 
   it('self-heals malformed ban history keys without breaking ban escalation', async () => {
@@ -95,11 +89,11 @@ describe('regressions (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '1s',
+      window: '1h',
       prefix,
       ban: {
-        escalation: ['300ms'],
-        history: '10s',
+        escalation: ['10s'],
+        history: '1m',
       },
     })
 

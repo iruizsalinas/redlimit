@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
+import { redisNowMs } from '../support/timing.js'
 
 const PREFIX = 'test-ban'
 
@@ -26,7 +27,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 2,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
       ban: {
         escalation: ['2s', '5s', '10s'],
@@ -73,31 +74,63 @@ describe('ban escalation', () => {
     expect(blockedKey).toBeNull()
   })
 
+  it('escalates ban duration on repeat offenses', async () => {
+    const shared = `${PREFIX}-esc`
+    const blockedKey = `${shared}:{user3}:blocked`
+
+    for (const [offense, banMs] of [10_000, 20_000, 50_000].entries()) {
+      // A fresh counter per offense avoids waiting for a window to roll over;
+      // the shared ban history carries the escalation between offenses.
+      const rl = new Limiter({
+        redis,
+        algorithm: 'fixed-window',
+        limit: 1,
+        window: '1h',
+        prefix: `${PREFIX}-esc-${offense}`,
+        ban: {
+          shared,
+          escalation: ['10s', '20s', '50s'],
+          history: '1h',
+        },
+      })
+
+      expect((await rl.limit('user3')).success).toBe(true)
+      expect((await rl.limit('user3')).success).toBe(false) // denied → banned
+
+      const pttl = await redis.pTTL(blockedKey)
+      expect(pttl).toBeGreaterThan(banMs - 5_000)
+      expect(pttl).toBeLessThanOrEqual(banMs)
+
+      // Lift the ban instead of waiting for it; the history still records it.
+      await redis.del(blockedKey)
+    }
+  })
+
   it('caps at max escalation step', async () => {
     const rl = new Limiter({
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
       ban: {
-        escalation: ['1s', '2s'],
-        history: '30s',
+        escalation: ['5s', '10s'],
+        history: '1m',
       },
     })
 
-    // Seed ban history with 5 entries (more than escalation steps)
+    // Seed ban history with 5 entries (more than escalation steps), on the Redis clock
+    const now = await redisNowMs(redis)
     for (let i = 0; i < 5; i++) {
-      const now = Date.now() + i
-      await redis.zAdd(`${PREFIX}:{user4}:banhist`, { score: now, value: `seed-${now}` })
+      await redis.zAdd(`${PREFIX}:{user4}:banhist`, { score: now - i, value: `seed-${i}` })
     }
 
     await rl.limit('user4')
-    await rl.limit('user4') // denied → should use last step (2s), not crash
+    await rl.limit('user4') // denied → should use last step (10s), not crash
 
     const pttl = await redis.pTTL(`${PREFIX}:{user4}:blocked`)
-    expect(pttl).toBeGreaterThan(1000)
-    expect(pttl).toBeLessThanOrEqual(2000)
+    expect(pttl).toBeGreaterThan(5_000)
+    expect(pttl).toBeLessThanOrEqual(10_000)
   })
 
   it('peek does not trigger ban', async () => {
@@ -105,7 +138,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
       ban: {
         escalation: ['10s'],
@@ -133,7 +166,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
       ban: {
         escalation: ['1s', '5s'],
@@ -158,8 +191,8 @@ describe('ban escalation', () => {
 
   it('ban works with all algorithms', async () => {
     const configs = [
-      { algorithm: 'fixed-window' as const, limit: 1, window: '10s' as const },
-      { algorithm: 'sliding-window' as const, limit: 1, window: '10s' as const },
+      { algorithm: 'fixed-window' as const, limit: 1, window: '1h' as const },
+      { algorithm: 'sliding-window' as const, limit: 1, window: '1h' as const },
       { algorithm: 'token-bucket' as const, limit: 1, refill: { amount: 1, interval: '1000s' as const } },
     ]
 
@@ -190,7 +223,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
       ban: {
         escalation: ['5s'],
@@ -219,7 +252,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
       // no ban config
     })
@@ -239,17 +272,17 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
       ban: {
-        escalation: ['2s', '10s'],
-        history: '1m',
+        escalation: ['30s', '1m'],
+        history: '5m',
       },
     })
 
-    // Exhaust limit + trigger first ban (2s)
+    // Exhaust limit + trigger first ban (30s, long enough to outlast the spam on a slow runner)
     await rl.limit('user10')
-    await rl.limit('user10') // denied → banned 2s
+    await rl.limit('user10') // denied → banned 30s
 
     const histAfterFirstBan = await redis.zCard(`${PREFIX}:{user10}:banhist`)
     expect(histAfterFirstBan).toBe(1)
@@ -262,9 +295,10 @@ describe('ban escalation', () => {
     const histAfterSpam = await redis.zCard(`${PREFIX}:{user10}:banhist`)
     expect(histAfterSpam).toBe(1) // still 1, not 51
 
-    // Ban should still be the first step duration (~2s), not escalated
+    // Ban should still be the first step duration (30s), not escalated
     const pttl = await redis.pTTL(`${PREFIX}:{user10}:blocked`)
-    expect(pttl).toBeLessThanOrEqual(2000)
+    expect(pttl).toBeGreaterThan(0)
+    expect(pttl).toBeLessThanOrEqual(30_000)
   })
 
   it('shared ban — ban from one limiter blocks another', async () => {
@@ -320,7 +354,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: `${PREFIX}-a`,
       ban: {
         escalation: ['10s'],
@@ -332,7 +366,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: `${PREFIX}-b`,
       ban: {
         escalation: ['10s'],
@@ -358,7 +392,7 @@ describe('ban escalation', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 5,
-      window: '10s',
+      window: '1h',
       ban: { escalation: [], history: '1m' },
     })).toThrow('non-empty array')
   })

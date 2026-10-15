@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { createClient, waitForRedisTime } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
+import { inRedisWindow } from '../support/timing.js'
 
 const PREFIX = 'test-fw'
 
@@ -26,7 +27,7 @@ describe('fixed-window (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 5,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -42,7 +43,7 @@ describe('fixed-window (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 3,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -61,7 +62,7 @@ describe('fixed-window (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 10,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -86,9 +87,12 @@ describe('fixed-window (integration)', () => {
       prefix: PREFIX,
     })
 
-    await rl.limit('user4')
-    await rl.limit('user4')
-    const denied = await rl.limit('user4')
+    // The fill and denial must land in the same 1s window to be meaningful.
+    const denied = await inRedisWindow(redis, 1_000, async () => {
+      await rl.reset('user4')
+      await rl.limit('user4', { cost: 2 })
+      return rl.limit('user4')
+    })
     expect(denied.success).toBe(false)
 
     await waitForRedisTime(redis, 1100)
@@ -102,7 +106,7 @@ describe('fixed-window (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 5,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -123,7 +127,7 @@ describe('fixed-window (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 10,
-      window: '30s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -138,7 +142,7 @@ describe('fixed-window (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 1,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 

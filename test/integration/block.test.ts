@@ -26,7 +26,7 @@ describe('block and reset (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 100,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -42,7 +42,7 @@ describe('block and reset (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 100,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -77,7 +77,7 @@ describe('block and reset (integration)', () => {
       redis,
       algorithm: 'sliding-window',
       limit: 100,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -92,7 +92,7 @@ describe('block and reset (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 2,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -113,7 +113,7 @@ describe('block and reset (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 100,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
@@ -133,7 +133,7 @@ describe('block and reset (integration)', () => {
       redis,
       algorithm: 'fixed-window',
       limit: 100,
-      window: '10s',
+      window: '1h',
       prefix: PREFIX,
     })
 
