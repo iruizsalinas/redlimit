@@ -1,3 +1,5 @@
+import { formatValue } from './errors.js'
+
 const UNITS: Record<string, number> = {
   ms: 1,
   s: 1_000,
@@ -9,17 +11,11 @@ const UNITS: Record<string, number> = {
 
 const DURATION_RE = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)$/
 
-export function parseDuration(input: string): number {
-  if (typeof input !== 'string') {
-    throw new Error(
-      `Invalid duration: "${String(input)}". Expected format: "30s", "5m", "1h", etc.`
-    )
-  }
-
-  const match = input.match(DURATION_RE)
+export function parseDuration(input: string, name = 'duration'): number {
+  const match = typeof input === 'string' ? input.match(DURATION_RE) : null
   if (!match) {
     throw new Error(
-      `Invalid duration: "${input}". Expected format: "30s", "5m", "1h", etc.`
+      `${name} must be a string such as "500ms", "30s", "5m", or "1h". Received ${formatValue(input)}.`
     )
   }
   const value = parseFloat(match[1])
@@ -27,12 +23,12 @@ export function parseDuration(input: string): number {
   const ms = Math.floor(value * UNITS[unit])
   if (ms <= 0) {
     throw new Error(
-      `duration must be greater than 0. Got: "${input}"`
+      `${name} must be greater than 0. Received ${formatValue(input)}.`
     )
   }
   if (!Number.isSafeInteger(ms)) {
     throw new Error(
-      `duration is too large to represent safely in milliseconds. Got: "${input}"`
+      `${name} is too large to represent safely in milliseconds. Received ${formatValue(input)}.`
     )
   }
   return ms

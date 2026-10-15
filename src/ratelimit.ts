@@ -1,6 +1,6 @@
 import { createAdapter } from './adapter.js'
 import { parseDuration } from './duration.js'
-import { isConfigurationError } from './errors.js'
+import { formatValue, isConfigurationError } from './errors.js'
 import { fixedWindow } from './algorithms/fixed-window.js'
 import { slidingWindow } from './algorithms/sliding-window.js'
 import { tokenBucket } from './algorithms/token-bucket.js'
@@ -23,7 +23,7 @@ const SUPPORTED_ALGORITHMS = new Set<Algorithm>([
 function validatePositiveSafeInteger(name: string, value: number): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error(
-      `${name} must be a positive integer within JavaScript's safe range. Got: ${value}`
+      `${name} must be a positive integer within JavaScript's safe integer range. Received ${formatValue(value)}.`
     )
   }
 }
@@ -32,22 +32,18 @@ function validateKeyPrefix(name: string, value: unknown): string | undefined {
   if (value === undefined) return undefined
 
   if (typeof value !== 'string') {
-    throw new Error(`${name} must be a string. Got: ${String(value)}`)
+    throw new Error(`${name} must be a string. Received ${formatValue(value)}.`)
   }
 
-  if (value.includes('{') || value.includes('}')) {
-    throw new Error(
-      `${name} must not contain "{" or "}" because Redis Cluster key hashing relies on reserved hash-tag braces.`
-    )
-  }
-
+  validateHashTagComponent(name, value)
   return value
 }
 
+// The value is left out because identifiers often hold user data such as IPs.
 function validateHashTagComponent(name: string, value: string): void {
   if (value.includes('{') || value.includes('}')) {
     throw new Error(
-      `${name} must not contain "{" or "}" because Redis Cluster key hashing relies on reserved hash-tag braces.`
+      `${name} must not contain "{" or "}" because Redis Cluster reserves braces for hash tags.`
     )
   }
 }
@@ -70,13 +66,13 @@ export class Limiter {
     const algorithm = config.algorithm as string
     if (!SUPPORTED_ALGORITHMS.has(algorithm as Algorithm)) {
       throw new Error(
-        `Unsupported algorithm: "${algorithm}". Expected "fixed-window", "sliding-window", or "token-bucket".`
+        `algorithm must be "fixed-window", "sliding-window", or "token-bucket". Received ${formatValue(algorithm)}.`
       )
     }
 
     if (config.fail !== undefined && config.fail !== 'open' && config.fail !== 'closed') {
       throw new Error(
-        `fail must be "open" or "closed". Got: ${String(config.fail)}`
+        `fail must be "open" or "closed". Received ${formatValue(config.fail)}.`
       )
     }
 
@@ -86,8 +82,8 @@ export class Limiter {
       if (!Array.isArray(config.ban.escalation) || config.ban.escalation.length === 0) {
         throw new Error('ban.escalation must be a non-empty array of durations.')
       }
-      const stepsMs = config.ban.escalation.map((d) => parseDuration(d))
-      const historyMs = parseDuration(config.ban.history)
+      const stepsMs = config.ban.escalation.map((d, i) => parseDuration(d, `ban.escalation[${i}]`))
+      const historyMs = parseDuration(config.ban.history, 'ban.history')
       this.banArgs = [
         String(stepsMs.length),
         String(historyMs),
@@ -110,12 +106,12 @@ export class Limiter {
         throw new Error('refill is required when algorithm is "token-bucket".')
       }
       validatePositiveSafeInteger('refill.amount', config.refill.amount)
-      const intervalMs = parseDuration(config.refill.interval)
+      const intervalMs = parseDuration(config.refill.interval, 'refill.interval')
       this.refillRate = config.refill.amount / intervalMs * 1000
       const bucketTtlMs = Math.ceil(this.limitValue / this.refillRate * 1000) + 1000
       if (!Number.isFinite(this.refillRate) || this.refillRate <= 0 || !Number.isSafeInteger(bucketTtlMs)) {
         throw new Error(
-          'token-bucket configuration produces a refill duration that is too large to represent safely.'
+          'refill is too slow for this limit. A full refill would take too long to represent safely in milliseconds.'
         )
       }
       this.windowMs = 0
@@ -127,11 +123,13 @@ export class Limiter {
         )
       }
 
-      this.windowMs = parseDuration(config.window)
+      this.windowMs = parseDuration(config.window, 'window')
       // Sliding counters retain two windows plus an expiry buffer. Checking the
       // input alone does not guarantee that this derived duration is exact.
       if (config.algorithm === 'sliding-window' && !Number.isSafeInteger(this.windowMs * 2 + 1000)) {
-        throw new Error('window produces a retention duration that is too large to represent safely.')
+        throw new Error(
+          'window is too large. Sliding-window counters are kept for twice the window, which is too long to represent safely in milliseconds.'
+        )
       }
       this.refillRate = 0
       this.algorithm = config.algorithm === 'fixed-window' ? fixedWindow : slidingWindow
@@ -140,7 +138,7 @@ export class Limiter {
 
   private validateIdentifier(identifier: string): void {
     if (typeof identifier !== 'string' || !identifier) {
-      throw new Error(`identifier must be a non-empty string. Got: ${String(identifier)}`)
+      throw new Error(`identifier must be a non-empty string. Received ${formatValue(identifier)}.`)
     }
     validateHashTagComponent('identifier', identifier)
   }
@@ -153,7 +151,7 @@ export class Limiter {
 
     if (cost > this.limitValue) {
       throw new Error(
-        `cost (${cost}) exceeds limit (${this.limitValue}). Request can never succeed.`
+        `cost cannot exceed limit (${this.limitValue}) because the request would never succeed. Received ${cost}.`
       )
     }
 

@@ -1,3 +1,4 @@
+import { formatValue } from '../errors.js'
 import type { LuaResult } from '../types.js'
 
 // node-redis 5.x decodes integer replies as `n * 10 + byte - 48`, which rounds
@@ -37,14 +38,14 @@ function toInteger(value: unknown): number {
     : typeof text === 'number' ? text
     : NaN
   if (!Number.isSafeInteger(number)) {
-    throw new Error(`Unexpected Redis script reply value: ${String(text)}`)
+    throw new Error(`Redis returned an unexpected reply from a rate limit script. Expected an integer value. Received ${formatValue(text)}.`)
   }
   return number
 }
 
 export function toLuaResult(result: unknown): LuaResult {
   if (!Array.isArray(result) || result.length !== 4) {
-    throw new Error('Unexpected Redis script reply: expected an array of four values.')
+    throw new Error('Redis returned an unexpected reply from a rate limit script. Expected an array of four integers.')
   }
   return [toInteger(result[0]), toInteger(result[1]), toInteger(result[2]), toInteger(result[3])]
 }

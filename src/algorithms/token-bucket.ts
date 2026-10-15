@@ -19,7 +19,7 @@ local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
 local ttlMs = math.ceil(maxTokens / refillRate * 1000) + 1000
 if now > 9007199254740991 - ttlMs then
-  return redis.error_reply('${CONFIGURATION_ERROR} refill produces timestamps that are too large to represent safely')
+  return redis.error_reply('${CONFIGURATION_ERROR} refill is too slow for this limit. Reset times would be too far in the future to represent safely in milliseconds.')
 end
 
 local pttl = redis.call('PTTL', blockedKey)
@@ -94,7 +94,7 @@ local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
 local ttlMs = math.ceil(maxTokens / refillRate * 1000) + 1000
 if now > 9007199254740991 - ttlMs then
-  return redis.error_reply('${CONFIGURATION_ERROR} refill produces timestamps that are too large to represent safely')
+  return redis.error_reply('${CONFIGURATION_ERROR} refill is too slow for this limit. Reset times would be too far in the future to represent safely in milliseconds.')
 end
 
 local pttl = redis.call('PTTL', blockedKey)

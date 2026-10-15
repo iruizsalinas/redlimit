@@ -33,11 +33,11 @@ describe('parseDuration', () => {
   })
 
   it('throws on invalid input', () => {
-    expect(() => parseDuration('abc')).toThrow('Invalid duration')
-    expect(() => parseDuration('30')).toThrow('Invalid duration')
-    expect(() => parseDuration('s30')).toThrow('Invalid duration')
-    expect(() => parseDuration('')).toThrow('Invalid duration')
-    expect(() => parseDuration('30x')).toThrow('Invalid duration')
+    expect(() => parseDuration('abc')).toThrow('duration must be a string such as')
+    expect(() => parseDuration('30')).toThrow('duration must be a string such as')
+    expect(() => parseDuration('s30')).toThrow('duration must be a string such as')
+    expect(() => parseDuration('')).toThrow('duration must be a string such as')
+    expect(() => parseDuration('30x')).toThrow('duration must be a string such as')
   })
 
   it('throws on zero duration', () => {

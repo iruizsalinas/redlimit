@@ -19,7 +19,7 @@ local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
 -- Include server time: a safe duration can still produce an unsafe timestamp.
 if now > 9007199254740991 - (windowMs * 2 + 1000) then
-  return redis.error_reply('${CONFIGURATION_ERROR} window produces timestamps that are too large to represent safely')
+  return redis.error_reply('${CONFIGURATION_ERROR} window is too large. Reset times would be too far in the future to represent safely in milliseconds.')
 end
 
 local pttl = redis.call('PTTL', blockedKey)
@@ -105,7 +105,7 @@ local t   = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
 if now > 9007199254740991 - (windowMs * 2 + 1000) then
-  return redis.error_reply('${CONFIGURATION_ERROR} window produces timestamps that are too large to represent safely')
+  return redis.error_reply('${CONFIGURATION_ERROR} window is too large. Reset times would be too far in the future to represent safely in milliseconds.')
 end
 
 local pttl = redis.call('PTTL', blockedKey)

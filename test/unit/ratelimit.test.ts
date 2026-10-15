@@ -109,7 +109,7 @@ describe('Limiter', () => {
 
     it('throws on an unsafe integer limit', () => {
       expect(() => new Limiter({ redis, algorithm: 'fixed-window', limit: Number.MAX_SAFE_INTEGER + 1, window: '30s' }))
-        .toThrow("limit must be a positive integer within JavaScript's safe range")
+        .toThrow("limit must be a positive integer within JavaScript's safe integer range")
     })
 
     it('throws when refill is missing', () => {
@@ -135,7 +135,7 @@ describe('Limiter', () => {
         algorithm: 'token-bucket',
         limit: 10,
         refill: { amount: Number.MAX_SAFE_INTEGER + 1, interval: '1s' },
-      })).toThrow("refill.amount must be a positive integer within JavaScript's safe range")
+      })).toThrow("refill.amount must be a positive integer within JavaScript's safe integer range")
     })
 
     it('throws when token-bucket time-to-live would be unsafe', () => {
@@ -144,26 +144,37 @@ describe('Limiter', () => {
         algorithm: 'token-bucket',
         limit: Number.MAX_SAFE_INTEGER,
         refill: { amount: 1, interval: '1s' },
-      })).toThrow('refill duration that is too large to represent safely')
+      })).toThrow('refill is too slow for this limit')
     })
 
     it('rejects a safe window whose sliding-counter retention would be unsafe', () => {
       expect(() => new Limiter({
         redis, algorithm: 'sliding-window', limit: 1,
         window: '4503599627370496ms',
-      })).toThrow('retention duration that is too large to represent safely')
+      })).toThrow('Sliding-window counters are kept for twice the window')
     })
 
     it('throws on invalid refill.interval', () => {
       expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: 1, interval: '0s' } } as any))
-        .toThrow('duration must be greater than 0')
+        .toThrow('refill.interval must be greater than 0. Received "0s".')
       expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: 1, interval: 'abc' } } as any))
-        .toThrow('Invalid duration')
+        .toThrow('refill.interval must be a string such as "500ms", "30s", "5m", or "1h". Received "abc".')
     })
 
     it('throws on window "0s"', () => {
       expect(() => new Limiter({ redis, algorithm: 'fixed-window', limit: 10, window: '0s' }))
-        .toThrow('duration must be greater than 0')
+        .toThrow('window must be greater than 0. Received "0s".')
+    })
+
+    it('names the ban duration that failed to parse', () => {
+      expect(() => new Limiter({
+        redis, algorithm: 'fixed-window', limit: 10, window: '1m',
+        ban: { escalation: ['1m', 'soon'], history: '1h' },
+      } as any)).toThrow('ban.escalation[1] must be a string such as')
+      expect(() => new Limiter({
+        redis, algorithm: 'fixed-window', limit: 10, window: '1m',
+        ban: { escalation: ['1m'], history: '0h' },
+      })).toThrow('ban.history must be greater than 0')
     })
 
     it('throws on unsupported algorithm', () => {
@@ -172,7 +183,7 @@ describe('Limiter', () => {
         algorithm: 'not-real',
         limit: 10,
         window: '30s',
-      } as any)).toThrow('Unsupported algorithm')
+      } as any)).toThrow('algorithm must be "fixed-window", "sliding-window", or "token-bucket"')
     })
 
     it('throws when window config is missing at runtime', () => {
@@ -344,7 +355,7 @@ describe('Limiter', () => {
     ])('rejects %s from the script', async (_name, reply) => {
       redis.evalSha.mockResolvedValue(reply)
       const rl = new Limiter({ redis, algorithm: 'fixed-window', limit: 10, window: '30s' })
-      await expect(rl.limit('user')).rejects.toThrow('Unexpected Redis script reply')
+      await expect(rl.limit('user')).rejects.toThrow('unexpected reply from a rate limit script')
     })
 
     it('returns failure when denied', async () => {
@@ -368,7 +379,7 @@ describe('Limiter', () => {
         window: '30s',
       })
       await expect(rl.limit('user_123', { cost: 11 })).rejects.toThrow(
-        'cost (11) exceeds limit (10)'
+        'cost cannot exceed limit (10)'
       )
     })
 
@@ -428,7 +439,7 @@ describe('Limiter', () => {
         window: '30s',
       })
       await expect(rl.limit('user_123', { cost: Number.MAX_SAFE_INTEGER + 1 })).rejects.toThrow(
-        "cost must be a positive integer within JavaScript's safe range"
+        "cost must be a positive integer within JavaScript's safe integer range"
       )
     })
 

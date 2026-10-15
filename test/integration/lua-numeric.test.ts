@@ -141,10 +141,10 @@ describe('Lua numeric and refill regressions', () => {
       const exists = () => adapter.eval("return redis.call('EXISTS', unpack(KEYS))", keys, [])
       try {
         await expect(algorithm.limit(clock, prefix, prefix, name, 1, windowMs, refillRate, 1, null))
-          .rejects.toThrow('timestamps that are too large')
+          .rejects.toThrow('too far in the future to represent safely')
         expect(await exists()).toBe(0)
         await expect(algorithm.peek(clock, prefix, prefix, name, 1, windowMs, refillRate))
-          .rejects.toThrow('timestamps that are too large')
+          .rejects.toThrow('too far in the future to represent safely')
         expect(await exists()).toBe(0)
       } finally { await adapter.del(...keys) }
     },

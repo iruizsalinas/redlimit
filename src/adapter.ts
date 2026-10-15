@@ -80,11 +80,11 @@ function createNodeRedisAdapter(c: any): RedisAdapter {
   }
 }
 
+const UNSUPPORTED_CLIENT = 'redis must be an ioredis client or a node-redis client (version 5 or later).'
+
 export function createAdapter(client: unknown): RedisAdapter {
   if (!client || typeof client !== 'object') {
-    throw new Error(
-      'Invalid Redis client. Pass an ioredis or node-redis (redis@5+) client.'
-    )
+    throw new Error(UNSUPPORTED_CLIENT)
   }
 
   if (isIoRedis(client)) {
@@ -95,7 +95,5 @@ export function createAdapter(client: unknown): RedisAdapter {
     return createNodeRedisAdapter(client)
   }
 
-  throw new Error(
-    'Unsupported Redis client. Pass an ioredis or node-redis (redis@5+) client.'
-  )
+  throw new Error(UNSUPPORTED_CLIENT)
 }

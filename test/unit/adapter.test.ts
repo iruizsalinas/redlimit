@@ -44,19 +44,19 @@ describe('createAdapter', () => {
       set: vi.fn(),
       get: vi.fn(),
       pttl: vi.fn(),
-    })).toThrow('Unsupported Redis client')
+    })).toThrow('redis must be an ioredis client or a node-redis client')
   })
 
   it('throws on null', () => {
-    expect(() => createAdapter(null)).toThrow('Invalid Redis client')
+    expect(() => createAdapter(null)).toThrow('redis must be an ioredis client or a node-redis client')
   })
 
   it('throws on undefined', () => {
-    expect(() => createAdapter(undefined)).toThrow('Invalid Redis client')
+    expect(() => createAdapter(undefined)).toThrow('redis must be an ioredis client or a node-redis client')
   })
 
   it('throws on unsupported client', () => {
-    expect(() => createAdapter({ foo: 'bar' })).toThrow('Unsupported Redis client')
+    expect(() => createAdapter({ foo: 'bar' })).toThrow('redis must be an ioredis client or a node-redis client')
   })
 
   it('rejects partial node-redis-like clients missing evalSha', () => {
@@ -67,7 +67,7 @@ describe('createAdapter', () => {
       set: vi.fn(),
       get: vi.fn(),
       pTTL: vi.fn(),
-    })).toThrow('Unsupported Redis client')
+    })).toThrow('redis must be an ioredis client or a node-redis client')
   })
 
   it('node-redis: tries evalSha first, falls back to eval on NOSCRIPT', async () => {
