@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
+import { createCluster, createClientPool, createSentinel } from 'redis'
+import { Cluster } from 'ioredis'
 import { createAdapter } from '../../src/adapter.js'
 
 describe('createAdapter', () => {
@@ -221,5 +223,18 @@ describe('createAdapter', () => {
     await adapter.del('key1', 'key2')
 
     expect(delFn).toHaveBeenCalledWith('key1', 'key2')
+  })
+
+  // Real, unconnected client objects: detection must pick the matching call convention.
+  it.each([
+    ['node-redis cluster', () => createCluster({ rootNodes: [{ url: 'redis://127.0.0.1:1' }] }), 'evalSha'],
+    ['node-redis pool', () => createClientPool({ url: 'redis://127.0.0.1:1' }), 'evalSha'],
+    ['node-redis sentinel', () => createSentinel({ name: 'main', sentinelRootNodes: [{ host: '127.0.0.1', port: 1 }] }), 'evalSha'],
+    ['ioredis cluster', () => new Cluster([{ host: '127.0.0.1', port: 1 }], { lazyConnect: true }), 'evalsha'],
+  ] as const)('detects a %s', async (_name, create, method) => {
+    const client = create() as any
+    const evalSha = vi.spyOn(client, method).mockResolvedValue([1, 9, 1000, 0])
+    await createAdapter(client).eval('return 1', ['rl:{id}'], ['1'])
+    expect(evalSha).toHaveBeenCalledOnce()
   })
 })
