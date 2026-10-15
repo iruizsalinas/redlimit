@@ -158,9 +158,12 @@ See the [examples](https://github.com/iruizsalinas/redlimit/tree/main/examples) 
 
 ## Supported Clients and Servers
 
-Servers: Redis 5.0+ or Valkey 7.2+.
+| Server | Minimum version |
+|---|---|
+| Redis | 5.0 |
+| Valkey | 7.2 |
 
-| Client package | Minimum version |
+| Client | Minimum version |
 |---|---|
 | `ioredis` | 5.0.0 |
 | `redis` | 5.0.0 |
