@@ -2,6 +2,17 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump (current retries an unpublished version)'
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+          - current
 
 permissions:
   contents: read
@@ -12,21 +23,40 @@ concurrency:
 
 jobs:
   prepare:
-    name: Check for an untagged version
+    name: Prepare release commit
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: write
     outputs:
+      commit: ${{ steps.commit.outputs.sha }}
       tag: ${{ steps.version.outputs.tag }}
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           package-manager-cache: false
+      - name: Check release branch
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" != 'refs/heads/main' ]; then
+            echo 'Releases must run from main.'
+            exit 1
+          fi
+          git fetch origin main
+          if [ "$(git rev-parse FETCH_HEAD)" != "$GITHUB_SHA" ]; then
+            echo 'main has advanced; start a new release run.'
+            exit 1
+          fi
+      - name: Bump version
+        env:
+          VERSION_BUMP: ${{ inputs.bump }}
+        run: node scripts/bump-version.mjs "$VERSION_BUMP"
       - name: Validate release version
         id: version
         run: node scripts/check-release.mjs
@@ -44,14 +74,32 @@ jobs:
             node scripts/check-npm-version.mjs
           fi
 
+      - name: Commit release version
+        id: commit
+        if: steps.check.outputs.should_release == 'true'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git add -- package.json package-lock.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "chore: bump package version to ${RELEASE_TAG#v}"
+            git push origin HEAD:refs/heads/main
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   test:
     needs: prepare
     if: needs.prepare.outputs.should_release == 'true'
     uses: ./.github/workflows/ci.yml
+    with:
+      release_commit: ${{ needs.prepare.outputs.commit }}
 
   publish:
     name: Publish tested package to npm
-    needs: test
+    needs: [prepare, test]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -90,11 +138,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
           existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" \
             --jq '.[] | select(.ref == ("refs/tags/" + env.RELEASE_TAG)) | .object.sha')
           if [ -n "$existing_sha" ]; then
-            if [ "$existing_sha" = "$GITHUB_SHA" ]; then
+            if [ "$existing_sha" = "$RELEASE_COMMIT" ]; then
               echo "Tag $RELEASE_TAG already points to the published commit; skipping."
               exit 0
             fi
@@ -103,4 +152,4 @@ jobs:
           fi
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
             -f "ref=refs/tags/$RELEASE_TAG" \
-            -f "sha=$GITHUB_SHA"
+            -f "sha=$RELEASE_COMMIT"
