@@ -28,6 +28,18 @@ for (const runtime of ['node', 'bun', 'deno']) {
     });
   }
 }
+// The multi-master job runs routing coverage independently: some standalone
+// client-variant tests intentionally use clients that do not follow MOVED.
+await build({
+  stdin: { contents: "import './test/integration/cluster-routing.test.ts'", resolveDir: root },
+  outfile: resolve(consumer, 'cluster-routing.test.mjs'),
+  bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', mainFields: ['module', 'main'],
+  external: ['node:*', 'redlimit', 'redis', 'ioredis'],
+  plugins: [{ name: 'cluster-tests', setup(builder) {
+    builder.onResolve({ filter: /^vitest$/ }, () => ({ path: resolve(root, 'scripts/adapters/node.mjs') }));
+    builder.onResolve({ filter: /src\/ratelimit\.js$/ }, () => ({ path: 'redlimit', external: true }));
+  } }],
+});
 const types = "import { Limiter, type LimiterResult } from 'redlimit';\nconst limiter = new Limiter({ redis: {}, algorithm: 'fixed-window', limit: 1, window: '1s' });\nconst result: Promise<LimiterResult> = limiter.limit('key');\n// @ts-expect-error Invalid algorithm must be rejected.\nnew Limiter({ redis: {}, algorithm: 'invalid', limit: 1, window: '1s' });\n";
 for (const extension of ['mts', 'cts']) await writeFile(resolve(consumer, 'types.' + extension), types);
 if (process.env.GITHUB_OUTPUT) {

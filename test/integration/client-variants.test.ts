@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createClient as createNodeClient, createClientPool } from 'redis'
+import { createClient as createNodeClient, createClientPool, RESP_TYPES } from 'redis'
 import Redis from 'ioredis'
 import { requireRedisUrl } from '../support/redis.js'
 import { Limiter } from '../../src/ratelimit.js'
@@ -66,6 +66,15 @@ if (client === 'redis') {
         expect(results.filter(result => result.success)).toHaveLength(10)
         await limiter.reset('shared')
       } finally { await pool.close() }
+    })
+
+    it('clients mapping bulk strings to Buffer decode to the same results', async () => {
+      const base = createNodeClient({ url: requireRedisUrl(), socket })
+      base.on('error', () => {})
+      await base.connect()
+      try {
+        await exerciseLimiter(base.withTypeMapping({ [RESP_TYPES.BLOB_STRING]: Buffer }), 'test-variant-buffer')
+      } finally { await base.quit() }
     })
 
     it('duplicated clients are accepted', async () => {

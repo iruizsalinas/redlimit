@@ -1,7 +1,9 @@
+import { CONFIGURATION_ERROR } from '../errors.js'
 import type { AlgorithmHandler, LuaResult } from '../types.js'
-import { getKeys, toLuaResult } from './shared.js'
+import { getKeys, LUA_RESULT, toLuaResult } from './shared.js'
 
 const LIMIT_SCRIPT = `
+${LUA_RESULT}
 
 local key        = KEYS[1]
 local blockedKey = KEYS[2]
@@ -15,9 +17,14 @@ local historyMs  = tonumber(ARGV[5])
 local t   = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
+local ttlMs = math.ceil(maxTokens / refillRate * 1000) + 1000
+if now > 9007199254740991 - ttlMs then
+  return redis.error_reply('${CONFIGURATION_ERROR} refill produces timestamps that are too large to represent safely')
+end
+
 local pttl = redis.call('PTTL', blockedKey)
 if pttl > 0 then
-  return {-1, 0, now + pttl, now}
+  return result(-1, 0, now + pttl, now)
 end
 
 local bucket = redis.call('HMGET', key, 'tokens', 'ts')
@@ -35,8 +42,6 @@ local tokensToAdd = elapsedMs * refillRate / 1000
 tokens = math.min(maxTokens, tokens + tokensToAdd)
 ts     = now
 
-local ttlMs = math.ceil(maxTokens / refillRate * 1000) + 1000
-
 if tokens < cost then
   if numSteps > 0 then
     local trimResult = redis.pcall('ZREMRANGEBYSCORE', banHistKey, '-inf', now - historyMs)
@@ -52,31 +57,32 @@ if tokens < cost then
     redis.call('ZADD', banHistKey, now, t[1] .. '-' .. t[2])
     redis.call('PEXPIRE', banHistKey, historyMs)
 
-    return {0, 0, now + banMs, now}
+    return result(0, 0, now + banMs, now)
   end
 
   local deficit  = cost - tokens
   local waitMs   = math.ceil(deficit / refillRate * 1000)
   local resetMs  = now + waitMs
 
-  redis.call('HSET', key, 'tokens', tostring(tokens), 'ts', tostring(ts))
-  redis.call('PEXPIRE', key, ttlMs)
-
-  return {0, math.floor(tokens), resetMs, now}
+  -- Keep the last consumption as the refill origin. Rejected requests consume
+  -- nothing; the existing TTL already outlasts the time needed to refill fully.
+  return result(0, math.floor(tokens), resetMs, now)
 end
 
 tokens = tokens - cost
 
-redis.call('HSET', key, 'tokens', tostring(tokens), 'ts', tostring(ts))
+-- Lua 5.1 tostring() uses too few significant digits to round-trip balances.
+redis.call('HSET', key, 'tokens', string.format('%.17g', tokens), 'ts', string.format('%.0f', ts))
 redis.call('PEXPIRE', key, ttlMs)
 
 local deficit = maxTokens - tokens
 local resetMs = now + math.ceil(deficit / refillRate * 1000)
 
-return {1, math.floor(tokens), resetMs, now}
+return result(1, math.floor(tokens), resetMs, now)
 `
 
 const PEEK_SCRIPT = `
+${LUA_RESULT}
 
 local key        = KEYS[1]
 local blockedKey = KEYS[2]
@@ -86,9 +92,14 @@ local refillRate = tonumber(ARGV[2])
 local t   = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
+local ttlMs = math.ceil(maxTokens / refillRate * 1000) + 1000
+if now > 9007199254740991 - ttlMs then
+  return redis.error_reply('${CONFIGURATION_ERROR} refill produces timestamps that are too large to represent safely')
+end
+
 local pttl = redis.call('PTTL', blockedKey)
 if pttl > 0 then
-  return {0, 0, now + pttl, now}
+  return result(0, 0, now + pttl, now)
 end
 
 local bucket = redis.call('HMGET', key, 'tokens', 'ts')
@@ -96,7 +107,7 @@ local tokens = tonumber(bucket[1])
 local ts     = tonumber(bucket[2])
 
 if tokens == nil then
-  return {1, maxTokens, now, now}
+  return result(1, maxTokens, now, now)
 end
 
 local elapsedMs   = math.max(0, now - ts)
@@ -106,12 +117,12 @@ tokens = math.min(maxTokens, tokens + tokensToAdd)
 if tokens < 1 then
   local deficit = 1 - tokens
   local waitMs  = math.ceil(deficit / refillRate * 1000)
-  return {0, math.floor(tokens), now + waitMs, now}
+  return result(0, math.floor(tokens), now + waitMs, now)
 end
 
 local deficit = maxTokens - tokens
 local resetMs = now + math.ceil(deficit / refillRate * 1000)
-return {1, math.floor(tokens), resetMs, now}
+return result(1, math.floor(tokens), resetMs, now)
 `
 
 export const tokenBucket: AlgorithmHandler = {

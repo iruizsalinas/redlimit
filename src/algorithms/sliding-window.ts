@@ -1,7 +1,9 @@
+import { CONFIGURATION_ERROR } from '../errors.js'
 import type { AlgorithmHandler, LuaResult } from '../types.js'
-import { getKeys, toLuaResult } from './shared.js'
+import { getKeys, LUA_RESULT, toLuaResult } from './shared.js'
 
 const LIMIT_SCRIPT = `
+${LUA_RESULT}
 
 local baseKey     = KEYS[1]
 local blockedKey  = KEYS[2]
@@ -15,9 +17,14 @@ local historyMs   = tonumber(ARGV[5])
 local t   = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
+-- Include server time: a safe duration can still produce an unsafe timestamp.
+if now > 9007199254740991 - (windowMs * 2 + 1000) then
+  return redis.error_reply('${CONFIGURATION_ERROR} window produces timestamps that are too large to represent safely')
+end
+
 local pttl = redis.call('PTTL', blockedKey)
 if pttl > 0 then
-  return {-1, 0, now + pttl, now}
+  return result(-1, 0, now + pttl, now)
 end
 
 local windowId          = math.floor(now / windowMs)
@@ -46,13 +53,13 @@ if weightedCount + cost > limit then
     redis.call('ZADD', banHistKey, now, t[1] .. '-' .. t[2])
     redis.call('PEXPIRE', banHistKey, historyMs)
 
-    return {0, 0, now + banMs, now}
+    return result(0, 0, now + banMs, now)
   end
 
   local low = now
   local high = now + windowMs * 2
   while low < high do
-    local mid = math.floor((low + high) / 2)
+    local mid = low + math.floor((high - low) / 2)
     local midWinId = math.floor(mid / windowMs)
     local p, c
     if midWinId == windowId then
@@ -73,7 +80,7 @@ if weightedCount + cost > limit then
     end
   end
 
-  return {0, math.max(0, math.floor(limit - weightedCount)), low, now}
+  return result(0, math.max(0, math.floor(limit - weightedCount)), low, now)
 end
 
 local newVal = redis.call('INCRBY', currentKey, cost)
@@ -83,10 +90,11 @@ if newVal == cost then
 end
 
 local newWeightedCount = previousCount * (1 - percentageElapsed) + newVal
-return {1, math.max(0, math.floor(limit - newWeightedCount)), (windowId + 1) * windowMs, now}
+return result(1, math.max(0, math.floor(limit - newWeightedCount)), (windowId + 1) * windowMs, now)
 `
 
 const PEEK_SCRIPT = `
+${LUA_RESULT}
 
 local baseKey     = KEYS[1]
 local blockedKey  = KEYS[2]
@@ -96,9 +104,13 @@ local windowMs    = tonumber(ARGV[2])
 local t   = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
+if now > 9007199254740991 - (windowMs * 2 + 1000) then
+  return redis.error_reply('${CONFIGURATION_ERROR} window produces timestamps that are too large to represent safely')
+end
+
 local pttl = redis.call('PTTL', blockedKey)
 if pttl > 0 then
-  return {0, 0, now + pttl, now}
+  return result(0, 0, now + pttl, now)
 end
 
 local windowId          = math.floor(now / windowMs)
@@ -116,7 +128,7 @@ if weightedCount + 1 > limit then
   local low = now
   local high = now + windowMs * 2
   while low < high do
-    local mid = math.floor((low + high) / 2)
+    local mid = low + math.floor((high - low) / 2)
     local midWinId = math.floor(mid / windowMs)
     local p, c
     if midWinId == windowId then
@@ -136,10 +148,10 @@ if weightedCount + 1 > limit then
       low = mid + 1
     end
   end
-  return {0, math.max(0, math.floor(limit - weightedCount)), low, now}
+  return result(0, math.max(0, math.floor(limit - weightedCount)), low, now)
 end
 
-return {1, math.max(0, math.floor(limit - weightedCount)), (windowId + 1) * windowMs, now}
+return result(1, math.max(0, math.floor(limit - weightedCount)), (windowId + 1) * windowMs, now)
 `
 
 const RESET_SCRIPT = `

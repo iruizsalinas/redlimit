@@ -139,7 +139,7 @@ jobs:
       - run: node scripts/run-runtime.mjs node
 
   cluster:
-    name: Node 24 / Redis 8 Cluster / ${{ matrix.client }}
+    name: Node 24 / Redis 8 Cluster / ${{ matrix.client }} / ${{ matrix.masters }} masters
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -147,15 +147,18 @@ jobs:
       fail-fast: false
       matrix:
         client: [redis, ioredis]
+        masters: [1, 3]
     env:
       REDIS_URL: redis://127.0.0.1:6379
       REDIS_CLIENT: ${{ matrix.client }}
       REDIS_TOPOLOGY: cluster
+      REDIS_CLUSTER_MASTERS: ${{ matrix.masters }}
     steps:
       # Service containers cannot pass server arguments, so start the node directly.
       # One node owning every slot still rejects CROSSSLOT multi-key commands and
       # exercises the cluster clients' routing and adapter detection.
       - name: Start single-node Redis Cluster
+        if: matrix.masters == 1
         run: |
           docker run -d --name redis-cluster -p 6379:6379 redis:8.10.2-alpine \
             redis-server --cluster-enabled yes --cluster-announce-ip 127.0.0.1
@@ -172,6 +175,28 @@ jobs:
           done
           docker exec redis-cluster redis-cli cluster info
           exit 1
+      - name: Start three-master Redis Cluster
+        if: matrix.masters == 3
+        run: |
+          for port in 6379 6380 6381; do
+            docker run -d --name redis-cluster-$port --network host redis:8.10.2-alpine \
+              redis-server --port "$port" --cluster-enabled yes --cluster-announce-ip 127.0.0.1
+          done
+          for port in 6379 6380 6381; do
+            for attempt in $(seq 1 30); do
+              docker exec redis-cluster-$port redis-cli -p "$port" ping >/dev/null 2>&1 && break
+              sleep 1
+            done
+          done
+          docker exec redis-cluster-6379 redis-cli --cluster create \
+            127.0.0.1:6379 127.0.0.1:6380 127.0.0.1:6381 --cluster-replicas 0 --cluster-yes
+          for attempt in $(seq 1 30); do
+            if docker exec redis-cluster-6379 redis-cli cluster info | grep -q 'cluster_state:ok'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.release_commit || github.sha }}
@@ -185,7 +210,10 @@ jobs:
         with:
           name: runtime-tests
           path: .ci/consumer
-      - run: node scripts/run-runtime.mjs node
+      - if: matrix.masters == 1
+        run: node scripts/run-runtime.mjs node
+      - if: matrix.masters == 3
+        run: node .ci/consumer/cluster-routing.test.mjs
 
   runtime:
     name: ${{ matrix.runtime }} / Redis 8 / ${{ matrix.client }}

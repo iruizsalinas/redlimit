@@ -1,5 +1,6 @@
 import { createAdapter } from './adapter.js'
 import { parseDuration } from './duration.js'
+import { isConfigurationError } from './errors.js'
 import { fixedWindow } from './algorithms/fixed-window.js'
 import { slidingWindow } from './algorithms/sliding-window.js'
 import { tokenBucket } from './algorithms/token-bucket.js'
@@ -127,6 +128,11 @@ export class Limiter {
       }
 
       this.windowMs = parseDuration(config.window)
+      // Sliding counters retain two windows plus an expiry buffer. Checking the
+      // input alone does not guarantee that this derived duration is exact.
+      if (config.algorithm === 'sliding-window' && !Number.isSafeInteger(this.windowMs * 2 + 1000)) {
+        throw new Error('window produces a retention duration that is too large to represent safely.')
+      }
       this.refillRate = 0
       this.algorithm = config.algorithm === 'fixed-window' ? fixedWindow : slidingWindow
     }
@@ -165,7 +171,7 @@ export class Limiter {
         this.banArgs,
       )
     } catch (err) {
-      if (this.fail === 'open') {
+      if (this.fail === 'open' && !isConfigurationError(err)) {
         const now = Date.now()
         return this.buildResult(true, this.limitValue, now, now)
       }
@@ -191,7 +197,7 @@ export class Limiter {
       )
       return this.buildResult(success === 1, remaining, resetMs, nowMs)
     } catch (err) {
-      if (this.fail === 'open') {
+      if (this.fail === 'open' && !isConfigurationError(err)) {
         const now = Date.now()
         return this.buildResult(true, this.limitValue, now, now)
       }

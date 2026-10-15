@@ -147,6 +147,13 @@ describe('Limiter', () => {
       })).toThrow('refill duration that is too large to represent safely')
     })
 
+    it('rejects a safe window whose sliding-counter retention would be unsafe', () => {
+      expect(() => new Limiter({
+        redis, algorithm: 'sliding-window', limit: 1,
+        window: '4503599627370496ms',
+      })).toThrow('retention duration that is too large to represent safely')
+    })
+
     it('throws on invalid refill.interval', () => {
       expect(() => new Limiter({ redis, algorithm: 'token-bucket', limit: 10, refill: { amount: 1, interval: '0s' } } as any))
         .toThrow('duration must be greater than 0')
@@ -314,6 +321,31 @@ describe('Limiter', () => {
       expect(result.remaining).toBe(9)
     })
 
+    it('decodes string and byte replies exactly near the safe integer limit', async () => {
+      const nowMs = Date.now()
+      const max = String(Number.MAX_SAFE_INTEGER - 2)
+      const rl = new Limiter({ redis, algorithm: 'fixed-window', limit: Number.MAX_SAFE_INTEGER, window: '30s' })
+      redis.evalSha.mockResolvedValueOnce(['1', max, String(nowMs + 30000), String(nowMs)])
+      expect((await rl.limit('user')).remaining).toBe(Number.MAX_SAFE_INTEGER - 2)
+      const bytes = (value: string) => Buffer.from(value)
+      redis.evalSha.mockResolvedValueOnce([bytes('-1'), bytes(max), bytes(String(nowMs + 30000)), bytes(String(nowMs))])
+      const blocked = await rl.limit('user')
+      expect(blocked.success).toBe(false)
+      expect(blocked.reset).toBe(nowMs + 30000)
+    })
+
+    it.each([
+      ['a short reply', ['1', '9', '0']],
+      ['a non-numeric value', ['1', 'nan', '0', '0']],
+      ['a fractional value', ['1', '9.5', '0', '0']],
+      ['a null value', ['1', null, '0', '0']],
+      ['an unsafe integer', ['1', '9007199254740993', '0', '0']],
+    ])('rejects %s from the script', async (_name, reply) => {
+      redis.evalSha.mockResolvedValue(reply)
+      const rl = new Limiter({ redis, algorithm: 'fixed-window', limit: 10, window: '30s' })
+      await expect(rl.limit('user')).rejects.toThrow('Unexpected Redis script reply')
+    })
+
     it('returns failure when denied', async () => {
       redis.evalSha.mockResolvedValue([0, 0, Date.now() + 30000, Date.now()])
       const rl = new Limiter({
@@ -436,6 +468,18 @@ describe('Limiter', () => {
       expect(result.success).toBe(true)
       expect(result.remaining).toBe(10)
     })
+
+    it.each(['REDLIMIT_INVALID_CONFIG', 'ERR REDLIMIT_INVALID_CONFIG'])(
+      'fail: open propagates %s errors from limit and peek', async prefix => {
+        const error = new Error(`${prefix} window produces timestamps that are too large to represent safely`)
+        redis.evalSha.mockRejectedValue(error)
+        const rl = new Limiter({
+          redis, algorithm: 'fixed-window', limit: 10, window: '30s', fail: 'open',
+        })
+        await expect(rl.limit('user')).rejects.toBe(error)
+        await expect(rl.peek('user')).rejects.toBe(error)
+      },
+    )
 
     it('applies deny-and-ban atomically in a single eval under fail: open mode', async () => {
       const nowMs = Date.now()

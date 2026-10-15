@@ -1,7 +1,9 @@
+import { CONFIGURATION_ERROR } from '../errors.js'
 import type { AlgorithmHandler, LuaResult } from '../types.js'
-import { getKeys, toLuaResult } from './shared.js'
+import { getKeys, LUA_RESULT, toLuaResult } from './shared.js'
 
 const LIMIT_SCRIPT = `
+${LUA_RESULT}
 
 local baseKey    = KEYS[1]
 local blockedKey = KEYS[2]
@@ -15,9 +17,13 @@ local historyMs  = tonumber(ARGV[5])
 local t   = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
+if now > 9007199254740991 - windowMs then
+  return redis.error_reply('${CONFIGURATION_ERROR} window produces timestamps that are too large to represent safely')
+end
+
 local pttl = redis.call('PTTL', blockedKey)
 if pttl > 0 then
-  return {-1, 0, now + pttl, now}
+  return result(-1, 0, now + pttl, now)
 end
 
 local windowId = math.floor(now / windowMs)
@@ -40,10 +46,10 @@ if current + cost > limit then
     redis.call('ZADD', banHistKey, now, t[1] .. '-' .. t[2])
     redis.call('PEXPIRE', banHistKey, historyMs)
 
-    return {0, 0, now + banMs, now}
+    return result(0, 0, now + banMs, now)
   end
 
-  return {0, math.max(0, limit - current), resetMs, now}
+  return result(0, math.max(0, limit - current), resetMs, now)
 end
 
 local newVal = redis.call('INCRBY', counterKey, cost)
@@ -52,10 +58,11 @@ if newVal == cost then
   redis.call('PEXPIRE', counterKey, windowMs)
 end
 
-return {1, math.max(0, limit - newVal), resetMs, now}
+return result(1, math.max(0, limit - newVal), resetMs, now)
 `
 
 const PEEK_SCRIPT = `
+${LUA_RESULT}
 
 local baseKey    = KEYS[1]
 local blockedKey = KEYS[2]
@@ -65,9 +72,13 @@ local windowMs   = tonumber(ARGV[2])
 local t   = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 
+if now > 9007199254740991 - windowMs then
+  return redis.error_reply('${CONFIGURATION_ERROR} window produces timestamps that are too large to represent safely')
+end
+
 local pttl = redis.call('PTTL', blockedKey)
 if pttl > 0 then
-  return {0, 0, now + pttl, now}
+  return result(0, 0, now + pttl, now)
 end
 
 local windowId = math.floor(now / windowMs)
@@ -76,10 +87,10 @@ local counterKey = baseKey .. ':' .. windowId
 local current = tonumber(redis.call('GET', counterKey) or '0')
 
 if current >= limit then
-  return {0, 0, resetMs, now}
+  return result(0, 0, resetMs, now)
 end
 
-return {1, limit - current, resetMs, now}
+return result(1, limit - current, resetMs, now)
 `
 
 const RESET_SCRIPT = `
