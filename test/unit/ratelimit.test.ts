@@ -331,7 +331,8 @@ describe('Limiter', () => {
       redis.evalSha.mockResolvedValueOnce([bytes('-1'), bytes(max), bytes(String(nowMs + 30000)), bytes(String(nowMs))])
       const blocked = await rl.limit('user')
       expect(blocked.success).toBe(false)
-      expect(blocked.reset).toBe(nowMs + 30000)
+      // `reset` is rebased onto app time; the header depends only on decoded values.
+      expect(blocked.headers['RateLimit-Reset']).toBe('30')
     })
 
     it.each([
